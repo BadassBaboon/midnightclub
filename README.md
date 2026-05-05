@@ -1,5 +1,7 @@
 # Midnight Club: Los Angeles — Static Recompilation
 
+![Demo](assets/demo.gif)
+
 A static recompilation of **Midnight Club: Los Angeles (Complete Edition)** for Xbox 360, targeting Windows x86-64. Built with the [rexGlu SDK](https://github.com/rexglue/rexglue) as a compilers class project.
 
 Static recompilation converts the original Xbox 360 PowerPC (PPC) bytecode in the game's `.xex` executable into native C++ that compiles and runs directly on a modern PC — no emulator, no interpreter. The game's kernel calls (file I/O, GPU commands, audio, threading) are handled by the rexGlu runtime.
