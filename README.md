@@ -6,6 +6,9 @@ A static recompilation of **Midnight Club: Los Angeles (Complete Edition)** for 
 
 Static recompilation converts the original Xbox 360 PowerPC (PPC) bytecode in the game's `.xex` executable into native C++ that compiles and runs directly on a modern PC — no emulator, no interpreter. The game's kernel calls (file I/O, GPU commands, audio, threading) are handled by the rexGlu runtime.
 
+
+
+
 ---
 
 ## What Works
