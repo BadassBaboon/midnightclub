@@ -13,6 +13,9 @@
 #include <rex/cvar.h>
 #include <cstdio>
 #include <csignal>
+#include <atomic>
+#include <mutex>
+#include <unordered_map>
 #include <windows.h>
 #include <dbghelp.h>
 #pragma comment(lib, "dbghelp.lib")
@@ -79,14 +82,46 @@ class MidnightclubApp : public rex::ReXApp {
     auto* fd = rex::Runtime::instance()->function_dispatcher();
     uint8_t* base = rex::Runtime::instance()->virtual_membase();
 
-    // Logging no-op stub — registered for any XEX address rexGlu didn't
-    // generate code for. Writes addr+LR to a file so it survives abort().
+    // Deduplicating stub logger. Each unique (addr, LR) pair is logged once
+    // with the first-call register args (r3-r6). A running call count is
+    // appended on each subsequent hit so we can spot hot stubs without spam.
+    struct StubEntry {
+      uint32_t r3, r4, r5, r6;
+      std::atomic<uint32_t> count{0};
+    };
     static FILE* stub_log = fopen("C:/Users/zarif/Documents/repo/midnightclub/stubs.txt", "w");
+    static std::mutex stub_mutex;
+    static std::unordered_map<uint64_t, StubEntry> stub_map;
+
     static PPCFunc* stub = [](PPCContext& ctx, uint8_t*) noexcept {
-      if (stub_log) {
-        fprintf(stub_log, "[stub] addr=0x%08X LR=0x%08X\n",
-                (uint32_t)ctx.ctr.u32, (uint32_t)ctx.lr);
-        fflush(stub_log);
+      uint32_t addr = ctx.ctr.u32;
+      uint32_t lr   = ctx.lr;
+      uint64_t key  = (uint64_t(addr) << 32) | lr;
+
+      std::lock_guard<std::mutex> lock(stub_mutex);
+      auto [it, inserted] = stub_map.emplace(
+          std::piecewise_construct, std::forward_as_tuple(key), std::forward_as_tuple());
+
+      if (inserted) {
+        it->second.r3 = ctx.r3.u32;
+        it->second.r4 = ctx.r4.u32;
+        it->second.r5 = ctx.r5.u32;
+        it->second.r6 = ctx.r6.u32;
+        it->second.count.store(1);
+        if (stub_log) {
+          fprintf(stub_log,
+                  "[stub] addr=0x%08X LR=0x%08X  r3=0x%08X r4=0x%08X r5=0x%08X r6=0x%08X\n",
+                  addr, lr, ctx.r3.u32, ctx.r4.u32, ctx.r5.u32, ctx.r6.u32);
+          fflush(stub_log);
+        }
+      } else {
+        uint32_t n = it->second.count.fetch_add(1) + 1;
+        // Re-log every power-of-two hits so we can see hot stubs growing.
+        if ((n & (n - 1)) == 0 && stub_log) {
+          fprintf(stub_log,
+                  "[stub] addr=0x%08X LR=0x%08X  (x%u)\n", addr, lr, n);
+          fflush(stub_log);
+        }
       }
     };
 
