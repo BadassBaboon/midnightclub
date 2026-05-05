@@ -1,0 +1,5 @@
+out/
+stubs.txt
+crash_stack.txt
+stderr.txt
+stdout.txt

@@ -1,0 +1,14 @@
+{
+  "version": "0.2.1",
+  "defaults": {},
+  "configurations": [
+    {
+      "type": "default",
+      "name": "midnightclub (RelWithDebInfo)",
+      "project": "CMakeLists.txt",
+      "projectTarget": "midnightclub.exe",
+      "currentDir": "${cmake.buildRoot}",
+      "args": []
+    }
+  ]
+}
