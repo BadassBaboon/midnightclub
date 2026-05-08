@@ -28,23 +28,12 @@ cmake --build out/build/win-amd64-relwithdebinfo --target midnightclub
 
 ## If You Re-Run `rexglue codegen`
 
-The codegen regenerates `generated/` and will **overwrite** the `mullhwu.` fix. After re-running codegen, patch it back manually:
-
-In `generated/midnightclub_recomp.43.cpp` around the line containing `mullhwu.`, replace:
-
-```cpp
-// mullhwu. r19,r0,r28
-// UNIMPLEMENTED: mullhwu.
-REX_UNIMPLEMENTED(0x825E18C4, "mullhwu.");
+```powershell
+& "path\to\rexglue.exe" codegen midnightclub_config.toml
+cmake --build out/build/win-amd64-relwithdebinfo --target midnightclub
 ```
 
-with:
-
-```cpp
-// mullhwu. r19,r0,r28
-ctx.r19.u64 = uint64_t((uint64_t(ctx.r0.u32) * uint64_t(ctx.r28.u32)) >> 32);
-ctx.cr0.compare<int32_t>(ctx.r19.s32, 0, ctx.xer);
-```
+No manual patches needed — rexGlu ≥ 0.7.8 handles all previously unimplemented instructions.
 
 ---
 

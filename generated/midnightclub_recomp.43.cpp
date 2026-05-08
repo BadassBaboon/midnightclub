@@ -20118,9 +20118,8 @@ DEFINE_REX_FUNC(sub_825E1768) {
 	simde_mm_store_si128((simde__m128i*)ctx.v21.u32, simde_mm_unpackhi_epi32(simde_mm_load_si128((simde__m128i*)ctx.v0.u32), simde_mm_load_si128((simde__m128i*)ctx.v60.u32)));
 	// vsel v26,v2,v3,v8
 	simde_mm_store_si128((simde__m128i*)ctx.v26.u8, simde_mm_or_si128(simde_mm_andnot_si128(simde_mm_load_si128((simde__m128i*)ctx.v8.u8), simde_mm_load_si128((simde__m128i*)ctx.v2.u8)), simde_mm_and_si128(simde_mm_load_si128((simde__m128i*)ctx.v8.u8), simde_mm_load_si128((simde__m128i*)ctx.v3.u8))));
-	// mullhwu. r19,r0,r28
-	ctx.r19.u64 = uint64_t((uint64_t(ctx.r0.u32) * uint64_t(ctx.r28.u32)) >> 32);
-	ctx.cr0.compare<int32_t>(ctx.r19.s32, 0, ctx.xer);
+	// vsldoi128 v19,v0,v60,12
+	simde_mm_store_si128((simde__m128i*)ctx.v19.u8, simde_mm_alignr_epi8(simde_mm_load_si128((simde__m128i*)ctx.v0.u8), simde_mm_load_si128((simde__m128i*)ctx.v60.u8), 4));
 	// vmaddfp v22,v12,v10,v2
 	simde_mm_store_ps(ctx.v22.f32, simde_mm_add_ps(simde_mm_mul_ps(simde_mm_load_ps(ctx.v12.f32), simde_mm_load_ps(ctx.v10.f32)), simde_mm_load_ps(ctx.v2.f32)));
 	// vand128 v56,v10,v53

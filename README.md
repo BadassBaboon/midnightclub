@@ -20,7 +20,7 @@ Static recompilation converts the original Xbox 360 PowerPC (PPC) bytecode in th
 
 ## Known Issues
 
-- Car falls through the road (road collision mesh not yet loading correctly)
+- None currently known
 
 ---
 
@@ -82,21 +82,12 @@ On first launch the game will prompt you to create a save profile. Do it once �
 
 ## If You Re-Run Codegen
 
-`rexglue codegen midnightclub_config.toml` regenerates the `generated/` directory and will **overwrite the `mullhwu.` fix**. After regenerating, find this in `generated/midnightclub_recomp.43.cpp`:
-
-```cpp
-// mullhwu. r19,r0,r28
-// UNIMPLEMENTED: mullhwu.
-REX_UNIMPLEMENTED(0x825E18C4, "mullhwu.");
+```powershell
+& "path\to\rexglue.exe" codegen midnightclub_config.toml
+cmake --build out/build/win-amd64-relwithdebinfo --target midnightclub
 ```
 
-Replace it with:
-
-```cpp
-// mullhwu. r19,r0,r28
-ctx.r19.u64 = uint64_t((uint64_t(ctx.r0.u32) * uint64_t(ctx.r28.u32)) >> 32);
-ctx.cr0.compare<int32_t>(ctx.r19.s32, 0, ctx.xer);
-```
+No manual patches needed — rexGlu ≥ 0.7.8 handles all previously unimplemented instructions.
 
 ---
 
@@ -109,7 +100,7 @@ The rexGlu SDK translates each PPC function in the XEX into a C++ function. Func
 | Static initializers calling unregistered functions | Pass 1: scan the XEX init tables and stub any missing entries |
 | "Dirty Disc" error shown for extracted files | Bypass `sub_82130678` (the disc-error handler) with a no-op |
 | Indirect calls to any unregistered code address | Pass 2: stub the entire code region `[0x82130000, 0x827CD054]` |
-| `mullhwu.` instruction not implemented by rexGlu | Implemented manually in `generated/midnightclub_recomp.43.cpp` — this was crashing on save creation |
+| `mullhwu.` / vmx128 opcodes misidentified as ppc405 | Fixed in rexGlu ≥ 0.7.8 codegen — re-run codegen to pick up the fix |
 | `t:` drive not registered in VFS | Register `t:` → `\Device\Harddisk0\Partition1` so city art/data lookups resolve |
 | Crash log lost when `abort()` is called | SIGABRT handler in `OnPostSetup` writes a stack trace to `crash_stack.txt` before dying |
 
