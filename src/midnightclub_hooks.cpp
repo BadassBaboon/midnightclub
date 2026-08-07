@@ -55,9 +55,23 @@ uint64_t MaxFrameTicks() {
   return ticks;
 }
 
+// How often to emit the frame-time histogram, in seconds. Each histogram
+// covers only its own window, so it can be attributed to a location on the
+// test route rather than smearing city and hills together.
+constexpr uint64_t kHistogramWindowSec = 10;
+
+// 1 ms buckets. Index 0..kHistBuckets-2 are whole milliseconds; the last
+// bucket is everything at or above that.
+constexpr int kHistBuckets = 121;
+
 // Frame-time instrumentation. Off unless MCLA_TIMING_LOG=1. Accumulates into
 // counters and touches the filesystem once per second — never from inside a
 // frame that is already late.
+//
+// The per-second summary lines are kept unchanged so runs stay comparable with
+// earlier baselines. The histogram is additive: 1 ms resolution, printed with
+// zero buckets omitted, which shows directly whether frame times cluster on
+// multiples of a fixed quantum or spread continuously.
 void RecordFrameTime() {
   static const bool enabled = [] {
     const char* e = std::getenv("MCLA_TIMING_LOG");
@@ -67,7 +81,10 @@ void RecordFrameTime() {
 
   static std::FILE* log = std::fopen("logs/timing.log", "w");
   static uint64_t last = 0, frames = 0, last_report = 0;
+  static uint64_t start = 0, last_hist = 0;
   static uint32_t spikes[4] = {};
+  static uint32_t hist[kHistBuckets] = {};
+  static uint64_t hist_frames = 0, hist_total_us = 0;
 
   uint64_t now = std::chrono::duration_cast<std::chrono::microseconds>(
                      std::chrono::steady_clock::now().time_since_epoch())
@@ -79,20 +96,62 @@ void RecordFrameTime() {
     else if (d > 50000) spikes[2]++;
     else if (d > 33000) spikes[1]++;
     else if (d > 20000) spikes[0]++;
+
+    int bucket = static_cast<int>(d / 1000);
+    if (bucket >= kHistBuckets) bucket = kHistBuckets - 1;
+    hist[bucket]++;
+    hist_frames++;
+    hist_total_us += d;
   }
   last = now;
+  if (start == 0) { start = now; last_hist = now; }
+
+  bool wrote = false;
 
   frames++;
   if (last_report == 0) last_report = now;
   if (now - last_report >= 1000000 && log) {
-    std::fprintf(log, "fps=%llu  spikes: >20ms=%u >33ms=%u >50ms=%u >100ms=%u\n",
-                 static_cast<unsigned long long>(frames), spikes[0], spikes[1],
-                 spikes[2], spikes[3]);
-    std::fflush(log);
+    wrote = true;
+    std::fprintf(log, "[%6.1fs] fps=%llu  spikes: >20ms=%u >33ms=%u >50ms=%u >100ms=%u\n",
+                 (now - start) / 1e6, static_cast<unsigned long long>(frames),
+                 spikes[0], spikes[1], spikes[2], spikes[3]);
     frames = 0;
     last_report = now;
     spikes[0] = spikes[1] = spikes[2] = spikes[3] = 0;
   }
+
+  if (now - last_hist >= kHistogramWindowSec * 1000000 && log) {
+    wrote = true;
+    uint32_t peak = 1;
+    for (int i = 0; i < kHistBuckets; ++i)
+      if (hist[i] > peak) peak = hist[i];
+
+    std::fprintf(log,
+                 "\n--- frame-time histogram | window %.1fs..%.1fs | %llu frames | mean %.2f ms ---\n",
+                 (last_hist - start) / 1e6, (now - start) / 1e6,
+                 static_cast<unsigned long long>(hist_frames),
+                 hist_frames ? (hist_total_us / 1000.0 / hist_frames) : 0.0);
+
+    for (int i = 0; i < kHistBuckets; ++i) {
+      if (!hist[i]) continue;  // omit empty buckets so clustering is obvious
+      int bar = static_cast<int>(48.0 * hist[i] / peak);
+      if (bar < 1) bar = 1;
+      std::fprintf(log, "%s%3d ms | %6u %.*s\n",
+                   i == kHistBuckets - 1 ? ">=" : "  ", i, hist[i],
+                   bar, "################################################");
+    }
+    std::fprintf(log, "\n");
+
+    for (int i = 0; i < kHistBuckets; ++i) hist[i] = 0;
+    hist_frames = 0;
+    hist_total_us = 0;
+    last_hist = now;
+  }
+
+  // Flush only on the frames that actually wrote. Flushing every frame would
+  // put a blocking disk write in the hot path — the original bug this
+  // instrumentation was rewritten to avoid.
+  if (wrote) std::fflush(log);
 }
 
 }  // namespace
