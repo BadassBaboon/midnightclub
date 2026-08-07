@@ -2866,8 +2866,6 @@ loc_8241999C:
 	return;
 }
 
-extern void MCLAPresentInterval(PPCRegister& r11);
-
 DEFINE_REX_FUNC(sub_824199B0) {
 	REX_FUNC_PROLOGUE();
 	uint32_t ea{};
@@ -3017,9 +3015,8 @@ loc_82419A98:
 	// b 0x82419ab4
 	goto loc_82419AB4;
 loc_82419AA0:
-	// li r11,2
-	ctx.r11.s64 = 2;
-	MCLAPresentInterval(ctx.r11);
+	// 60 FPS DeltaTime Patch: li r11,1
+	ctx.r11.s64 = 1;
 	// b 0x82419ab4
 	goto loc_82419AB4;
 loc_82419AA8:

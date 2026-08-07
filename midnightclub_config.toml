@@ -1,3 +1,45 @@
+# ---------------------------------------------------------------------------
+# Mid-asm hooks
+#
+# These replace hand-edits to generated/*.cpp, which `rexglue codegen` wipes.
+# Implementations live in src/midnightclub_hooks.cpp.
+# ---------------------------------------------------------------------------
+
+# 0x821BDAB0 is `subf r8,r10,r11` in sub_821BDA90 — r8 becomes the elapsed
+# guest tick count for this frame. Clamp it so a streaming stall cannot feed an
+# unbounded delta into the physics and audio clocks. Also the once-per-frame
+# site used for frame-time instrumentation.
+[[midasm_hook]]
+name = "MCLAFrameDelta"
+address = 0x821BDAB0
+after_instruction = true
+registers = ["r8"]
+
+# 0x821BDB08 is `bne cr6,0x821BDBC8`, where cr6 is ([r3+56] == 0) and [r3+56]
+# is a one-shot "timer was reset" flag.
+#
+# Returning true (flag clear — every normal frame) jumps past the 30 Hz paths
+# at loc_821BDB90 / loc_821BDB58 / loc_821BDB80, all of which overwrite the
+# measured delta in [r3+8]/[r3+88] with the fixed timestep from [r3+32].
+#
+# Returning false lets the original branch run, so reset frames still reach
+# loc_821BDBC8 and get a synthetic delta instead of a garbage one. Xenia's
+# patch skips that guard unconditionally; we deliberately keep it.
+[[midasm_hook]]
+name = "MCLAUseRealDelta"
+address = 0x821BDB08
+registers = ["cr6"]
+jump_address_on_true = 0x821BDC34
+
+# 0x82419AA0 is `li r11,2` in sub_824199B0, which builds a PM4 packet — r11 is
+# the present interval in vblanks, shifted into the packet field at 0x82419AB4.
+# 2 = present every other vblank = 30 FPS. Force 1.
+[[midasm_hook]]
+name = "MCLAPresentInterval"
+address = 0x82419AA0
+after_instruction = true
+registers = ["r11"]
+
 [functions]
 0x822B88C8 = {}
 0x824B0DE8 = {}

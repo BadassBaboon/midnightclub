@@ -1,4 +1,9 @@
 #include "midnightclub_init.h"
+#include <rex/chrono/clock.h>
+#include <chrono>
+#include <thread>
+#include <cstdio>
+#include <cstdlib>
 
 DEFINE_REX_FUNC(sub_821A5CD8) {
 	REX_FUNC_PROLOGUE();
@@ -57255,14 +57260,52 @@ loc_821BDA7C:
 	return;
 }
 
-extern void MCLAFrameDelta(PPCRegister& r8);
-
-extern bool MCLAUseRealDelta(PPCCRRegister& cr6);
-
 DEFINE_REX_FUNC(sub_821BDA90) {
 	REX_FUNC_PROLOGUE();
 	PPCRegister temp{};
 loc_821BDA90:
+	// --- Frame-time instrumentation (set MCLA_TIMING_LOG=1 to enable) ---
+	// Records into a fixed ring buffer and only touches the filesystem once per
+	// second. The previous version did fprintf+fflush from inside this function
+	// on every frame that exceeded 20 ms, i.e. a synchronous blocking disk write
+	// on exactly the frames that were already late — which inflated the very
+	// spikes it was measuring.
+	{
+		static const bool timing_enabled = [] {
+			const char* e = getenv("MCLA_TIMING_LOG");
+			return e && *e == '1';
+		}();
+		if (timing_enabled) {
+			static FILE* timing_log = fopen("logs/timing.log", "w");
+			static uint64_t last_time = 0, frame_count = 0, last_fps_time = 0;
+			static uint32_t spikes[4] = {};  // >20ms, >33ms, >50ms, >100ms
+
+			uint64_t current_time = std::chrono::duration_cast<std::chrono::microseconds>(
+				std::chrono::steady_clock::now().time_since_epoch()).count();
+
+			if (last_time != 0) {
+				uint64_t d = current_time - last_time;
+				if (d > 100000) spikes[3]++;
+				else if (d > 50000) spikes[2]++;
+				else if (d > 33000) spikes[1]++;
+				else if (d > 20000) spikes[0]++;
+			}
+			last_time = current_time;
+
+			frame_count++;
+			if (last_fps_time == 0) last_fps_time = current_time;
+			if (current_time - last_fps_time >= 1000000 && timing_log) {
+				fprintf(timing_log,
+					"fps=%llu  spikes: >20ms=%u >33ms=%u >50ms=%u >100ms=%u\n",
+					(unsigned long long)frame_count, spikes[0], spikes[1], spikes[2], spikes[3]);
+				frame_count = 0;
+				last_fps_time = current_time;
+				spikes[0] = spikes[1] = spikes[2] = spikes[3] = 0;
+			}
+		}
+	}
+	// --------------------------------
+
 	// mftb r11
 	ctx.r11.u64 = REX_QUERY_TIMEBASE();
 	// rotlwi r10,r11,0
@@ -57283,7 +57326,38 @@ loc_821BDA90:
 	ctx.f13.f64 = double(temp.f32);
 	// subf r8,r10,r11
 	ctx.r8.u64 = ctx.r11.u64 - ctx.r10.u64;
-	MCLAFrameDelta(ctx.r8);
+	
+	// --- Hitch guard on the measured delta ---
+	// Any frame longer than the cap advances the world by only the cap, i.e. the
+	// game runs in slow motion for that frame. At the old 33.3 ms setting a 46 ms
+	// frame ran the sim at 72% speed and a 61 ms frame at 55% — and those are the
+	// two most common spike buckets in the frame-time logs, so the cap was firing
+	// constantly during normal play. It only masked this before the 0x821BDB08
+	// fix because the fixed-timestep path meant speed scaled with frame rate.
+	//
+	// Cap high enough that it only catches genuine streaming stalls. Tune without
+	// rebuilding via MCLA_MAX_FRAME_MS, clamped to [16, 1000] ms — there is
+	// deliberately no way to disable this. It is the last line of defence
+	// against an unbounded delta reaching the physics and audio clocks, and
+	// removing it produced a painfully loud audio blowout during testing.
+	{
+		static const uint64_t max_ticks = [] {
+			double ms = 125.0;
+			if (const char* e = getenv("MCLA_MAX_FRAME_MS")) {
+				double v = atof(e);
+				if (v > 0.0) ms = v;
+			}
+			if (ms < 16.0) ms = 16.0;
+			if (ms > 1000.0) ms = 1000.0;
+			uint64_t hz = rex::chrono::Clock::guest_tick_frequency();
+			if (hz == 0) hz = 50000000;
+			return uint64_t(ms * 0.001 * double(hz));
+		}();
+		if (ctx.r8.u64 > max_ticks) {
+			ctx.r8.u64 = max_ticks;
+		}
+	}
+	// -------------------------------------------------
 	// lbz r7,56(r3)
 	ctx.r7.u64 = REX_LOAD_U8(ctx.r3.u32 + 56);
 	// lis r6,-32256
@@ -57335,12 +57409,26 @@ loc_821BDA90:
 	temp.f32 = float(ctx.f0.f64);
 	REX_STORE_U32(ctx.r3.u32 + 8, temp.u32);
 	// bne cr6,0x821bdbc8
-	if (MCLAUseRealDelta(ctx.cr6)) {
-		goto loc_821BDC34;
-	}
-	else {
-	}
+	// --- 60 FPS / Game Speed Fix (guest address 0x821BDB08) ---
+	// Xenia replaces this branch outright with `b 0x821BDC34`. We deliberately
+	// do NOT go that far: we keep the original branch and only redirect its
+	// fall-through.
+	//
+	// cr6 here is ([r3+56] == 0), and [r3+56] is a one-shot "timer was reset"
+	// flag — loc_821BDBC8 consumes it and clears it again at loc_821BDC24
+	// (`li r11,0; stb r11,56(r3)`). On that frame [r3+64] (last tick) is stale
+	// or zero, so `subf r8,r10,r11` yields a garbage delta, and loc_821BDBC8
+	// exists to substitute a synthetic one. Skipping it unconditionally feeds
+	// that garbage delta straight into the engine on every timer reset, which
+	// with the hitch clamp disabled desynchronises the XMA decoder and audio
+	// worker threads — audible as a very loud burst of noise.
+	//
+	// So: keep the reset guard, and bypass only the 30 Hz paths. When the flag
+	// is clear (every normal frame) fall through to loc_821BDC34, skipping both
+	// loc_821BDB90 and loc_821BDB58/loc_821BDB80, all of which overwrite the
+	// measured delta in [r3+8]/[r3+88] with the fixed timestep from [r3+32].
 	if (!ctx.cr6.eq) goto loc_821BDBC8;
+	goto loc_821BDC34;
 	// lbz r10,58(r3)
 	ctx.r10.u64 = REX_LOAD_U8(ctx.r3.u32 + 58);
 	// lfs f12,20(r3)
@@ -57396,8 +57484,9 @@ loc_821BDB58:
 	ctx.f11.f64 = double(temp.f32);
 	// fcmpu cr6,f12,f11
 	ctx.cr6.compare(ctx.f12.f64, ctx.f11.f64);
-	// beq cr6,0x821bdc34
-	if (ctx.cr6.eq) goto loc_821BDC34;
+	// (The 60 FPS patch previously sat here, at guest 0x821BDB68. That is ~0x60
+	// bytes past the address Xenia patches; it left the loc_821BDBC8
+	// fixed-timestep path fully live. Moved to 0x821BDB08 above.)
 	// fcmpu cr6,f0,f12
 	ctx.cr6.compare(ctx.f0.f64, ctx.f12.f64);
 	// bge cr6,0x821bdb80

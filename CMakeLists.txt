@@ -15,6 +15,7 @@ include(generated/rexglue.cmake)
 # Sources
 set(MIDNIGHTCLUB_SOURCES
     src/main.cpp
+    src/midnightclub_hooks.cpp
 )
 
 if(WIN32)
