@@ -1,5 +1,29 @@
+# Build outputs
 out/
+build/
+bin/
+obj/
+
+# Local runtime data & caches
+user_data/
+cache/
+logs/
+*.log
 stubs.txt
 crash_stack.txt
 stderr.txt
 stdout.txt
+
+# IDE & Editor files
+.vs/
+.vscode/*
+!.vscode/tasks.json
+!.vscode/launch.json
+*.user
+*.suo
+*.userosv
+*.sln.docstates
+
+# OS generated files
+.DS_Store
+Thumbs.db

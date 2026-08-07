@@ -48916,97 +48916,9 @@ DEFINE_REX_FUNC(sub_82770648) {
 	default:
 		__builtin_trap(); // Switch case out of range
 	}
-loc_82770690:
-	// mr r3,r31
-	ctx.r3.u64 = ctx.r31.u64;
-	// bl 0x82770460
-	ctx.lr = 0x82770698;
-	sub_82770460(ctx, base);
-	// li r11,1
-	ctx.r11.s64 = 1;
-loc_8277069C:
-	// stw r11,144(r31)
-	REX_STORE_U32(ctx.r31.u32 + 144, ctx.r11.u32);
 loc_827706A0:
 	// li r3,0
 	ctx.r3.s64 = 0;
-	// addi r1,r1,96
-	ctx.r1.s64 = ctx.r1.s64 + 96;
-	// lwz r12,-8(r1)
-	ctx.r12.u64 = REX_LOAD_U32(ctx.r1.u32 + -8);
-	// mtlr r12
-	ctx.lr = ctx.r12.u64;
-	// ld r31,-16(r1)
-	ctx.r31.u64 = REX_LOAD_U64(ctx.r1.u32 + -16);
-	// blr 
-	return;
-loc_827706B8:
-	// mr r3,r31
-	ctx.r3.u64 = ctx.r31.u64;
-	// bl 0x82770068
-	ctx.lr = 0x827706C0;
-	sub_82770068(ctx, base);
-	// lwz r11,112(r31)
-	ctx.r11.u64 = REX_LOAD_U32(ctx.r31.u32 + 112);
-	// cmpwi cr6,r11,-1
-	ctx.cr6.compare<int32_t>(ctx.r11.s32, -1, ctx.xer);
-	// bne cr6,0x82770700
-	if (!ctx.cr6.eq) goto loc_82770700;
-	// lbz r11,32(r31)
-	ctx.r11.u64 = REX_LOAD_U8(ctx.r31.u32 + 32);
-	// rlwinm r10,r11,0,27,27
-	ctx.r10.u64 = __builtin_rotateleft64(ctx.r11.u32 | (ctx.r11.u64 << 32), 0) & 0x10;
-	// cmplwi cr6,r10,0
-	ctx.cr6.compare<uint32_t>(ctx.r10.u32, 0, ctx.xer);
-	// bne cr6,0x82770700
-	if (!ctx.cr6.eq) goto loc_82770700;
-	// clrlwi r11,r11,24
-	ctx.r11.u64 = ctx.r11.u32 & 0xFF;
-	// li r3,1
-	ctx.r3.s64 = 1;
-	// rlwinm r11,r11,0,27,25
-	ctx.r11.u64 = __builtin_rotateleft64(ctx.r11.u32 | (ctx.r11.u64 << 32), 0) & 0xFFFFFFFFFFFFFFDF;
-	// stb r11,32(r31)
-	REX_STORE_U8(ctx.r31.u32 + 32, ctx.r11.u8);
-	// addi r1,r1,96
-	ctx.r1.s64 = ctx.r1.s64 + 96;
-	// lwz r12,-8(r1)
-	ctx.r12.u64 = REX_LOAD_U32(ctx.r1.u32 + -8);
-	// mtlr r12
-	ctx.lr = ctx.r12.u64;
-	// ld r31,-16(r1)
-	ctx.r31.u64 = REX_LOAD_U64(ctx.r1.u32 + -16);
-	// blr 
-	return;
-loc_82770700:
-	// li r11,2
-	ctx.r11.s64 = 2;
-	// b 0x8277069c
-	sub_8277069C(ctx, base);
-	return;
-loc_82770708:
-	// mr r3,r31
-	ctx.r3.u64 = ctx.r31.u64;
-	// bl 0x8276ff68
-	ctx.lr = 0x82770710;
-	sub_8276FF68(ctx, base);
-	// li r11,3
-	ctx.r11.s64 = 3;
-	// b 0x8277069c
-	sub_8277069C(ctx, base);
-	return;
-loc_82770718:
-	// mr r3,r31
-	ctx.r3.u64 = ctx.r31.u64;
-	// bl 0x82770358
-	ctx.lr = 0x82770720;
-	sub_82770358(ctx, base);
-	// li r11,4
-	ctx.r11.s64 = 4;
-	// li r3,1
-	ctx.r3.s64 = 1;
-	// stw r11,144(r31)
-	REX_STORE_U32(ctx.r31.u32 + 144, ctx.r11.u32);
 	// addi r1,r1,96
 	ctx.r1.s64 = ctx.r1.s64 + 96;
 	// lwz r12,-8(r1)

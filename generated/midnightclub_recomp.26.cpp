@@ -20056,7 +20056,6 @@ loc_82420A54:
 	ctx.r29.s64 = 64;
 	// vpkd3d128 v63,v1,5,2,2
 	ctx.fpscr.enableFlushMode();
-	ctx.v63.u64[0] = 0;
 	temp.u32 = (ctx.v1.u32[3]&0x7FFFFFFF);
 	vTemp.u8[0] = (temp.f32 != temp.f32) || (temp.f32 > 65504.0f) ? 0xFF : ((ctx.v1.u32[3]&0x7f800000)>>23);
 	temp.u16 = vTemp.u8[0] != 0xFF ? ((ctx.v1.u32[3]&0x7FE000)>>13) : 0x0;

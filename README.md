@@ -28,7 +28,7 @@ Static recompilation converts the original Xbox 360 PowerPC (PPC) bytecode in th
 
 | Requirement | Notes |
 |---|---|
-| **rexGlu SDK v0.7.8.2-dev** | Must be installed and on PATH (`rexglue` command available) |
+| **rexGlue SDK v0.9.0** | Must be installed and on PATH (`rexglue` command available) |
 | **CMake ≥ 3.25** | |
 | **Clang** (via LLVM or VS) | The presets use `clang`/`clang++` — MSVC will not work |
 | **Ninja** | Build system used by all presets |

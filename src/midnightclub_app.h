@@ -20,6 +20,9 @@
 #include <dbghelp.h>
 #pragma comment(lib, "dbghelp.lib")
 
+#include <rex/graphics/flags.h>
+#include <rex/ui/flags.h>
+
 class MidnightclubApp : public rex::ReXApp {
  public:
   using rex::ReXApp::ReXApp;
@@ -30,8 +33,32 @@ class MidnightclubApp : public rex::ReXApp {
         PPCImageConfig));
   }
 
+  void OnPreSetup(rex::RuntimeConfig& config) override {
+    config.gpu_plugin = "xenos";
+
+    // Internal Resolution Scaling (2x = 1440p) & Quality Overrides
+    rex::cvar::SetFlagByName("draw_resolution_scale_x", "2");
+    rex::cvar::SetFlagByName("draw_resolution_scale_y", "2");
+    rex::cvar::SetFlagByName("anisotropic_override", "16");
+    rex::cvar::SetFlagByName("gpu_allow_invalid_fetch_constants", "true");
+
+    // Display & Frame Pacing (Window 2560x1440, Console Refresh 60Hz)
+    rex::cvar::SetFlagByName("window_width", "2560");
+    rex::cvar::SetFlagByName("window_height", "1440");
+    rex::cvar::SetFlagByName("video_mode_width", "2560");
+    rex::cvar::SetFlagByName("video_mode_height", "1440");
+    rex::cvar::SetFlagByName("video_mode_refresh_rate", "60");
+    rex::cvar::SetFlagByName("vsync", "true");
+  }
+
   void OnConfigurePaths(rex::PathConfig& paths) override {
-    paths.game_data_root = "C:/Users/zarif/Documents/repo/midnightclub-xex/extracted/Midnight Club - Los Angeles - Complete Edition (USA, Europe)";
+    if (std::filesystem::exists("E:/MCLA/MCLA_Game_Files")) {
+      paths.game_data_root = "E:/MCLA/MCLA_Game_Files";
+    } else if (std::filesystem::exists("../MCLA_Game_Files")) {
+      paths.game_data_root = "../MCLA_Game_Files";
+    }
+    paths.user_data_root = "user_data";
+    paths.cache_root     = "cache";
   }
 
   void OnPostSetup() override {
@@ -39,7 +66,7 @@ class MidnightclubApp : public rex::ReXApp {
     // before the process dies, so we can see what called abort().
     static auto abort_handler = [](int) {
       static FILE* crash_log =
-          fopen("C:/Users/zarif/Documents/repo/midnightclub/crash_stack.txt", "w");
+          fopen("crash_stack.txt", "w");
       if (!crash_log) return;
 
       HANDLE process = GetCurrentProcess();
@@ -89,7 +116,7 @@ class MidnightclubApp : public rex::ReXApp {
       uint32_t r3, r4, r5, r6;
       std::atomic<uint32_t> count{0};
     };
-    static FILE* stub_log = fopen("C:/Users/zarif/Documents/repo/midnightclub/stubs.txt", "w");
+    static FILE* stub_log = fopen("stubs.txt", "w");
     static std::mutex stub_mutex;
     static std::unordered_map<uint64_t, StubEntry> stub_map;
 

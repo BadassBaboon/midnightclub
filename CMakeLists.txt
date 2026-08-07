@@ -23,4 +23,4 @@ else()
     add_executable(midnightclub ${MIDNIGHTCLUB_SOURCES})
 endif()
 
-rexglue_setup_target(midnightclub)
+rexglue_setup_target(midnightclub GPU_PLUGINS xenos)

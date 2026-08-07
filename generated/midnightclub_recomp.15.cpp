@@ -14923,7 +14923,6 @@ loc_822FD7B8:
 	simde_mm_store_si128((simde__m128i*)ctx.v62.u8, simde_mm_load_si128((simde__m128i*)ctx.v63.u8));
 	// vpkd3d128 v62,v63,5,2,2
 	ctx.fpscr.enableFlushModeUnconditional();
-	ctx.v62.u64[0] = 0;
 	temp.u32 = (ctx.v63.u32[3]&0x7FFFFFFF);
 	vTemp.u8[0] = (temp.f32 != temp.f32) || (temp.f32 > 65504.0f) ? 0xFF : ((ctx.v63.u32[3]&0x7f800000)>>23);
 	temp.u16 = vTemp.u8[0] != 0xFF ? ((ctx.v63.u32[3]&0x7FE000)>>13) : 0x0;
@@ -14993,7 +14992,6 @@ loc_822FD7B8:
 	simde_mm_store_si128((simde__m128i*)ctx.v61.u8, simde_mm_load_si128((simde__m128i*)ctx.v63.u8));
 	// vpkd3d128 v61,v63,5,2,2
 	ctx.fpscr.enableFlushModeUnconditional();
-	ctx.v61.u64[0] = 0;
 	temp.u32 = (ctx.v63.u32[3]&0x7FFFFFFF);
 	vTemp.u8[0] = (temp.f32 != temp.f32) || (temp.f32 > 65504.0f) ? 0xFF : ((ctx.v63.u32[3]&0x7f800000)>>23);
 	temp.u16 = vTemp.u8[0] != 0xFF ? ((ctx.v63.u32[3]&0x7FE000)>>13) : 0x0;
@@ -45920,7 +45918,6 @@ DEFINE_REX_FUNC(sub_8230A350) {
 	ctx.r7.s64 = -2105671680;
 	// vpkd3d128 v63,v1,5,2,2
 	ctx.fpscr.enableFlushMode();
-	ctx.v63.u64[0] = 0;
 	temp.u32 = (ctx.v1.u32[3]&0x7FFFFFFF);
 	vTemp.u8[0] = (temp.f32 != temp.f32) || (temp.f32 > 65504.0f) ? 0xFF : ((ctx.v1.u32[3]&0x7f800000)>>23);
 	temp.u16 = vTemp.u8[0] != 0xFF ? ((ctx.v1.u32[3]&0x7FE000)>>13) : 0x0;
@@ -46051,7 +46048,6 @@ DEFINE_REX_FUNC(sub_8230A350) {
 	// vor128 v54,v55,v55
 	simde_mm_store_si128((simde__m128i*)ctx.v54.u8, simde_mm_load_si128((simde__m128i*)ctx.v55.u8));
 	// vpkd3d128 v54,v55,5,2,2
-	ctx.v54.u64[0] = 0;
 	temp.u32 = (ctx.v55.u32[3]&0x7FFFFFFF);
 	vTemp.u8[0] = (temp.f32 != temp.f32) || (temp.f32 > 65504.0f) ? 0xFF : ((ctx.v55.u32[3]&0x7f800000)>>23);
 	temp.u16 = vTemp.u8[0] != 0xFF ? ((ctx.v55.u32[3]&0x7FE000)>>13) : 0x0;

@@ -68452,7 +68452,6 @@ loc_824DF7E8:
 	simde_mm_store_si128((simde__m128i*)ctx.v62.u8, simde_mm_load_si128((simde__m128i*)ctx.v63.u8));
 	// vpkd3d128 v62,v63,5,2,2
 	ctx.fpscr.enableFlushMode();
-	ctx.v62.u64[0] = 0;
 	temp.u32 = (ctx.v63.u32[3]&0x7FFFFFFF);
 	vTemp.u8[0] = (temp.f32 != temp.f32) || (temp.f32 > 65504.0f) ? 0xFF : ((ctx.v63.u32[3]&0x7f800000)>>23);
 	temp.u16 = vTemp.u8[0] != 0xFF ? ((ctx.v63.u32[3]&0x7FE000)>>13) : 0x0;
