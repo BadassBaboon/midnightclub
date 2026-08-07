@@ -204,11 +204,5 @@ class MidnightclubApp : public rex::ReXApp {
       }
     }
 
-    // --- 60 FPS Game Speed Fix ---
-    // The engine's animation/physics sub-stepping reads this global byte 
-    // to determine the target frame rate. 2 = 30 FPS, 1 = 60 FPS.
-    // Setting it to 1 prevents the game from running at 2x speed when VSync is off
-    // and the game loop runs at 60+ FPS.
-    base[0x82419AA3 - 0x82000000] = 0x01;
   }
 };
