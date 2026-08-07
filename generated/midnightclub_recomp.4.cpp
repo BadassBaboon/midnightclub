@@ -57386,8 +57386,8 @@ loc_821BDB58:
 	ctx.f11.f64 = double(temp.f32);
 	// fcmpu cr6,f12,f11
 	ctx.cr6.compare(ctx.f12.f64, ctx.f11.f64);
-	// beq cr6,0x821bdc34
-	if (ctx.cr6.eq) goto loc_821BDC34;
+	// 60 FPS Patch: b 0x821bdc34
+	goto loc_821BDC34;
 	// fcmpu cr6,f0,f12
 	ctx.cr6.compare(ctx.f0.f64, ctx.f12.f64);
 	// bge cr6,0x821bdb80

@@ -50,14 +50,15 @@ class MidnightclubApp : public rex::ReXApp {
     rex::cvar::SetFlagByName("readback_memexport_fast", "true");
     rex::cvar::SetFlagByName("d3d12_allow_variable_refresh_rate_and_tearing", "true");
 
-    // 4. Display & Frame Presentation
+    // 4. Display & Frame Presentation (V-Sync enabled to cap 60 FPS and lock 1.0x game speed)
     rex::cvar::SetFlagByName("window_width", "2560");
     rex::cvar::SetFlagByName("window_height", "1440");
     rex::cvar::SetFlagByName("video_mode_width", "2560");
     rex::cvar::SetFlagByName("video_mode_height", "1440");
     rex::cvar::SetFlagByName("video_mode_refresh_rate", "60");
-    rex::cvar::SetFlagByName("vsync", "false");
+    rex::cvar::SetFlagByName("vsync", "true");
   }
+
 
   void OnConfigurePaths(rex::PathConfig& paths) override {
     if (std::filesystem::exists("E:/MCLA/MCLA_Game_Files")) {
