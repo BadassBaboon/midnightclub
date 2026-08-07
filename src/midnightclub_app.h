@@ -60,7 +60,8 @@ class MidnightclubApp : public rex::ReXApp {
     rex::cvar::SetFlagByName("video_mode_width", "2560");
     rex::cvar::SetFlagByName("video_mode_height", "1440");
     rex::cvar::SetFlagByName("video_mode_refresh_rate", "60");
-    rex::cvar::SetFlagByName("vsync", "true");
+    rex::cvar::SetFlagByName("vsync", "false");
+    rex::cvar::SetFlagByName("fullscreen", "true"); // Bypass DWM VBlank waiting
   }
 
 
@@ -202,5 +203,12 @@ class MidnightclubApp : public rex::ReXApp {
         fd->SetFunction(addr, stub);
       }
     }
+
+    // --- 60 FPS Game Speed Fix ---
+    // The engine's animation/physics sub-stepping reads this global byte 
+    // to determine the target frame rate. 2 = 30 FPS, 1 = 60 FPS.
+    // Setting it to 1 prevents the game from running at 2x speed when VSync is off
+    // and the game loop runs at 60+ FPS.
+    base[0x82419AA3 - 0x82000000] = 0x01;
   }
 };
