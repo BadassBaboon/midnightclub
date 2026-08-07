@@ -37,6 +37,7 @@ extern int32_t g_substep_last, g_substep_min, g_substep_max;
 extern uint64_t g_substep_sum, g_substep_n;
 extern double g_sim_time_sum;
 extern uint64_t g_sim_iters;
+extern uint64_t g_fixedstep_hits;
 
 namespace {
 
@@ -273,6 +274,9 @@ void RecordFrameTime() {
                  accum_a, accum_a - prev_accum_a, accum_b, accum_b - prev_accum_b,
                  ReadGuestFloat(kGuestTimeScale),
                  (accum_a - prev_accum_a) < 0.001f ? "<-- FROZEN" : "");
+    std::fprintf(log, "           loc_821BDB90 fixed-step path taken %llu times\n",
+                 static_cast<unsigned long long>(g_fixedstep_hits));
+    g_fixedstep_hits = 0;
     prev_accum_a = accum_a;
     prev_accum_b = accum_b;
     frames = 0;
@@ -456,6 +460,26 @@ void MCLAFrameDelta(PPCRegister& r8) {
 // 0.0333 for an entire session. Moving the hook down to 0x821BDB58 skips only
 // the fixed-step overwrite and lets the accumulators run again.
 void MCLAUseRealDelta() {}
+
+// How many times the loc_821BDB90 fixed-step path was taken this second.
+uint64_t g_fixedstep_hits = 0;
+
+// 0x821BDB90, immediately after `lfs f11,32(r3)` loads the FIXED timestep and
+// before `fmuls f0,f11,f13` consumes it.
+//
+// Replace the fixed step with the measured unscaled delta, which is still sitting
+// in [r3+88] at this point (written at 0x821BDAF8, not clobbered until
+// 0x821BDB9C). Every instruction downstream then does the right thing without
+// further intervention: f0 becomes measured*timescale, the stores to [r3+8] and
+// [r3+88] write measured values, and [r3+20]/[r3+24] accumulate the measured
+// delta rather than a fixed 1/30 s.
+//
+// Bypassing this block instead would have lost those accumulator updates — the
+// exact mistake that froze [r3+20] when the hook sat at 0x821BDB08.
+void MCLAFixedStepPath(PPCRegister& r3, PPCRegister& f11) {
+  g_fixedstep_hits++;
+  f11.f64 = static_cast<double>(ReadGuestFloat(r3.u32 + 88));
+}
 
 // 0x82419AA0, after `li r11,2`. Present interval in vblanks: 2 -> 1.
 //

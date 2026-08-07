@@ -42,6 +42,29 @@ name = "MCLAUseRealDelta"
 address = 0x821BDB58
 jump_address = 0x821BDC34
 
+# loc_821BDB90 — the OTHER fixed-timestep path, taken when [r3+58] or [r3+60]
+# are set. Measured: leaving this alone made the sim run at 2x at 60 fps
+# (SIM RATE 4.00x vs the correct 2.00x, accumulators +1.97/s vs +1.00/s).
+#
+#   0x821BDB90  lfs f11,32(r3)     ; f11 = FIXED timestep
+#   0x821BDB98  fmuls f0,f11,f13   ; f0  = fixed * timescale
+#   0x821BDB9C  stfs f11,88(r3)    ; overwrite unscaled delta
+#   0x821BDBA0  stfs f0,8(r3)      ; overwrite scaled delta   <-- the 2x
+#   0x821BDBAC  fadds f9,f0,f12    ; and accumulates the fixed delta too
+#
+# Rather than bypass the block (which would lose its accumulator updates, the
+# mistake that froze [r3+20] last time), just replace the value it loads.
+# Overwriting f11 with the measured unscaled delta — still intact in [r3+88] at
+# this point, written at 0x821BDAF8 and not clobbered until 0x821BDB9C — makes
+# every instruction downstream do the right thing on its own: f0 becomes
+# measured*timescale, both stores write measured values, and the accumulators
+# advance by the measured delta.
+[[midasm_hook]]
+name = "MCLAFixedStepPath"
+address = 0x821BDB90
+after_instruction = true
+registers = ["r3", "f11"]
+
 # 0x82419AA0 is `li r11,2` in sub_824199B0, which builds a PM4 packet — r11 is
 # the present interval in vblanks, shifted into the packet field at 0x82419AB4.
 # 2 = present every other vblank = 30 FPS. Force 1.

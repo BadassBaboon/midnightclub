@@ -57259,6 +57259,8 @@ extern void MCLAFrameDelta(PPCRegister& r8);
 
 extern void MCLAUseRealDelta();
 
+extern void MCLAFixedStepPath(PPCRegister& r3, PPCRegister& f11);
+
 DEFINE_REX_FUNC(sub_821BDA90) {
 	REX_FUNC_PROLOGUE();
 	PPCRegister temp{};
@@ -57422,6 +57424,7 @@ loc_821BDB90:
 	ctx.fpscr.disableFlushMode();
 	temp.u32 = REX_LOAD_U32(ctx.r3.u32 + 32);
 	ctx.f11.f64 = double(temp.f32);
+	MCLAFixedStepPath(ctx.r3, ctx.f11);
 	// clrlwi r11,r5,24
 	ctx.r11.u64 = ctx.r5.u32 & 0xFF;
 	// fmuls f0,f11,f13
