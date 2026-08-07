@@ -76,18 +76,17 @@ class MidnightclubApp : public rex::ReXApp {
     SetFlag("fullscreen", "true"); // Bypass DWM VBlank waiting
   }
 
-  // Log level defaults to trace on non-Release builds (BuildLogConfig's
-  // precedence is CLI > REX_LOG_LEVEL env > build-type default). On this title
-  // that produced ~8,000 lines/sec and ~1.4 MB/s of synchronous formatting and
-  // file I/O during gameplay — every texture load, eDRAM resolve and page
-  // coherence action. Clamp it here so RelWithDebInfo builds keep their symbols
-  // without paying for trace spam. Set REX_LOG_TRACE=1 to opt back in.
-  void OnPostInitLogging() override {
-    if (const char* e = getenv("REX_LOG_TRACE"); e && *e == '1') {
-      return;
-    }
-    rex::SetAllLevels(spdlog::level::warn);
-  }
+  // NOTE ON LOG LEVEL: this build defaults to `trace` because BuildLogConfig
+  // falls back to a build-type default on non-Release builds, and trace on this
+  // title costs ~7,500 lines/sec of synchronous formatting and file I/O during
+  // gameplay. Calling rex::SetAllLevels() from OnPostInitLogging() does NOT
+  // work — verified: the [info] banner rex_app.cpp emits immediately after that
+  // hook still reaches the log. Set the level with the REX_LOG_LEVEL
+  // environment variable instead (BuildLogConfig honours it and rex_app passes
+  // an empty cli_level, so env wins):
+  //
+  //     $env:REX_LOG_LEVEL = "warn"
+  //
 
 
   void OnConfigurePaths(rex::PathConfig& paths) override {

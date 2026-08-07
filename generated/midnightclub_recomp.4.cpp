@@ -1,7 +1,9 @@
 #include "midnightclub_init.h"
+#include <rex/chrono/clock.h>
 #include <chrono>
 #include <thread>
 #include <cstdio>
+#include <cstdlib>
 
 DEFINE_REX_FUNC(sub_821A5CD8) {
 	REX_FUNC_PROLOGUE();
@@ -57325,12 +57327,35 @@ loc_821BDA90:
 	// subf r8,r10,r11
 	ctx.r8.u64 = ctx.r11.u64 - ctx.r10.u64;
 	
-	// --- Dynamic Arbitrary FPS / Hitch Physics Fix ---
-	// The Xbox 360 timebase frequency is exactly 50,000,000 Hz.
-	// Cap the maximum delta step to 33.3ms (30 FPS equivalent) to prevent physics 
-	// instability/explosions when streaming threads stall the CPU for 300+ ms.
-	if (ctx.r8.u64 > 1666666) {
-		ctx.r8.u64 = 1666666;
+	// --- Hitch guard on the measured delta ---
+	// Any frame longer than the cap advances the world by only the cap, i.e. the
+	// game runs in slow motion for that frame. At the old 33.3 ms setting a 46 ms
+	// frame ran the sim at 72% speed and a 61 ms frame at 55% — and those are the
+	// two most common spike buckets in the frame-time logs, so the cap was firing
+	// constantly during normal play. It only masked this before the 0x821BDB08
+	// fix because the fixed-timestep path meant speed scaled with frame rate.
+	//
+	// Cap high enough that it only catches genuine streaming stalls. Tune without
+	// rebuilding via MCLA_MAX_FRAME_MS, clamped to [16, 1000] ms — there is
+	// deliberately no way to disable this. It is the last line of defence
+	// against an unbounded delta reaching the physics and audio clocks, and
+	// removing it produced a painfully loud audio blowout during testing.
+	{
+		static const uint64_t max_ticks = [] {
+			double ms = 125.0;
+			if (const char* e = getenv("MCLA_MAX_FRAME_MS")) {
+				double v = atof(e);
+				if (v > 0.0) ms = v;
+			}
+			if (ms < 16.0) ms = 16.0;
+			if (ms > 1000.0) ms = 1000.0;
+			uint64_t hz = rex::chrono::Clock::guest_tick_frequency();
+			if (hz == 0) hz = 50000000;
+			return uint64_t(ms * 0.001 * double(hz));
+		}();
+		if (ctx.r8.u64 > max_ticks) {
+			ctx.r8.u64 = max_ticks;
+		}
 	}
 	// -------------------------------------------------
 	// lbz r7,56(r3)
@@ -57384,15 +57409,26 @@ loc_821BDA90:
 	temp.f32 = float(ctx.f0.f64);
 	REX_STORE_U32(ctx.r3.u32 + 8, temp.u32);
 	// bne cr6,0x821bdbc8
-	// --- 60 FPS / Game Speed Fix (Xenia patch 0x821BDB08 = 0x4800012C) ---
-	// This instruction, at guest address 0x821BDB08, is the branch the Xenia
-	// patch overwrites with `b 0x821BDC34`. Taking it unconditionally skips
-	// BOTH the fixed-timestep branch (loc_821BDBC8, which throws away the
-	// measured delta and substitutes 1.0/target_fps) and the 30 Hz accumulator
-	// spinlock (loc_821BDB58/loc_821BDB80). The real delta already stored to
-	// r3+8 / r3+88 two instructions above is what the engine then consumes.
-	goto loc_821BDC34;
+	// --- 60 FPS / Game Speed Fix (guest address 0x821BDB08) ---
+	// Xenia replaces this branch outright with `b 0x821BDC34`. We deliberately
+	// do NOT go that far: we keep the original branch and only redirect its
+	// fall-through.
+	//
+	// cr6 here is ([r3+56] == 0), and [r3+56] is a one-shot "timer was reset"
+	// flag — loc_821BDBC8 consumes it and clears it again at loc_821BDC24
+	// (`li r11,0; stb r11,56(r3)`). On that frame [r3+64] (last tick) is stale
+	// or zero, so `subf r8,r10,r11` yields a garbage delta, and loc_821BDBC8
+	// exists to substitute a synthetic one. Skipping it unconditionally feeds
+	// that garbage delta straight into the engine on every timer reset, which
+	// with the hitch clamp disabled desynchronises the XMA decoder and audio
+	// worker threads — audible as a very loud burst of noise.
+	//
+	// So: keep the reset guard, and bypass only the 30 Hz paths. When the flag
+	// is clear (every normal frame) fall through to loc_821BDC34, skipping both
+	// loc_821BDB90 and loc_821BDB58/loc_821BDB80, all of which overwrite the
+	// measured delta in [r3+8]/[r3+88] with the fixed timestep from [r3+32].
 	if (!ctx.cr6.eq) goto loc_821BDBC8;
+	goto loc_821BDC34;
 	// lbz r10,58(r3)
 	ctx.r10.u64 = REX_LOAD_U8(ctx.r3.u32 + 58);
 	// lfs f12,20(r3)
