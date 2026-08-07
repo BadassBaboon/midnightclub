@@ -21,6 +21,7 @@
 #pragma comment(lib, "dbghelp.lib")
 
 #include <rex/graphics/flags.h>
+#include <rex/logging/api.h>
 #include <rex/ui/flags.h>
 
 class MidnightclubApp : public rex::ReXApp {
@@ -33,35 +34,59 @@ class MidnightclubApp : public rex::ReXApp {
         PPCImageConfig));
   }
 
+  // SetFlagByName silently returns false for names that were never registered,
+  // so a typo'd cvar looks identical to one that was applied. Assert loudly.
+  static void SetFlag(const char* name, const char* value) {
+    if (!rex::cvar::SetFlagByName(name, value)) {
+      fprintf(stderr, "[cvar] UNKNOWN FLAG '%s' (value '%s') — ignored!\n", name, value);
+    }
+  }
+
   void OnPreSetup(rex::RuntimeConfig& config) override {
     config.gpu_plugin = "xenos";
 
     // 1. Internal Resolution Scaling (1 = Native Render Targets to prevent readback stalls)
-    rex::cvar::SetFlagByName("resolution_scale", "1");
-    rex::cvar::SetFlagByName("anisotropic_override", "16");
-    rex::cvar::SetFlagByName("gpu_allow_invalid_fetch_constants", "true");
+    SetFlag("resolution_scale", "1");
+    SetFlag("anisotropic_override", "16");
+    SetFlag("gpu_allow_invalid_fetch_constants", "true");
 
     // 2. Fix UI / Minimap White Box Flickering
     // (Note: d3d12_readback_resolve fixes the minimap now, so we can re-enable async shaders to fix stuttering!)
-    rex::cvar::SetFlagByName("async_shader_compilation", "true");
-    rex::cvar::SetFlagByName("mount_cache", "true"); // Cache RPF archives in RAM to fix streaming hitches
+    SetFlag("async_shader_compilation", "true");
+    // NOTE: "mount_cache" is not a cvar in rexglue 0.9.0 — the name appears
+    // nowhere in the SDK headers or in rexruntimerd.dll, so the old call here
+    // was a silent no-op and RPF archives were never cached in RAM.
 
     // 3. Modern GPU & CPU Performance Optimizations (D3D12 Bindless + Async Resolves)
-    rex::cvar::SetFlagByName("d3d12_bindless", "true");
-    rex::cvar::SetFlagByName("d3d12_pipeline_creation_threads", "8");
-    rex::cvar::SetFlagByName("d3d12_readback_resolve", "false"); // Disables CPU-blocking eDRAM sync barriers
-    rex::cvar::SetFlagByName("d3d12_clear_memory_page_state", "false");
-    rex::cvar::SetFlagByName("readback_memexport_fast", "true");
-    rex::cvar::SetFlagByName("d3d12_allow_variable_refresh_rate_and_tearing", "true");
+    SetFlag("d3d12_bindless", "true");
+    SetFlag("d3d12_pipeline_creation_threads", "8");
+    SetFlag("d3d12_readback_resolve", "false"); // Disables CPU-blocking eDRAM sync barriers
+    // Was "d3d12_clear_memory_page_state" (no such cvar); correct name has no prefix.
+    SetFlag("clear_memory_page_state", "false");
+    SetFlag("readback_memexport_fast", "true");
+    SetFlag("d3d12_allow_variable_refresh_rate_and_tearing", "true");
 
-    // 4. Display & Frame Presentation (V-Sync enabled to cap 60 FPS and lock 1.0x game speed)
-    rex::cvar::SetFlagByName("window_width", "2560");
-    rex::cvar::SetFlagByName("window_height", "1440");
-    rex::cvar::SetFlagByName("video_mode_width", "2560");
-    rex::cvar::SetFlagByName("video_mode_height", "1440");
-    rex::cvar::SetFlagByName("video_mode_refresh_rate", "60");
-    rex::cvar::SetFlagByName("vsync", "false");
-    rex::cvar::SetFlagByName("fullscreen", "true"); // Bypass DWM VBlank waiting
+    // 4. Display & Frame Presentation
+    SetFlag("window_width", "2560");
+    SetFlag("window_height", "1440");
+    SetFlag("video_mode_width", "2560");
+    SetFlag("video_mode_height", "1440");
+    SetFlag("video_mode_refresh_rate", "60");
+    SetFlag("vsync", "false");
+    SetFlag("fullscreen", "true"); // Bypass DWM VBlank waiting
+  }
+
+  // Log level defaults to trace on non-Release builds (BuildLogConfig's
+  // precedence is CLI > REX_LOG_LEVEL env > build-type default). On this title
+  // that produced ~8,000 lines/sec and ~1.4 MB/s of synchronous formatting and
+  // file I/O during gameplay — every texture load, eDRAM resolve and page
+  // coherence action. Clamp it here so RelWithDebInfo builds keep their symbols
+  // without paying for trace spam. Set REX_LOG_TRACE=1 to opt back in.
+  void OnPostInitLogging() override {
+    if (const char* e = getenv("REX_LOG_TRACE"); e && *e == '1') {
+      return;
+    }
+    rex::SetAllLevels(spdlog::level::warn);
   }
 
 

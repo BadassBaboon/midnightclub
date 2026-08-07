@@ -57262,39 +57262,48 @@ DEFINE_REX_FUNC(sub_821BDA90) {
 	REX_FUNC_PROLOGUE();
 	PPCRegister temp{};
 loc_821BDA90:
-	// --- Dynamic Real-Time DeltaTime Logger ---
-	static uint64_t last_time = 0;
-	static uint64_t frame_count = 0;
-	static uint64_t last_fps_time = 0;
-	static FILE* timing_log = nullptr;
-	if (!timing_log) timing_log = fopen("logs/timing.log", "w");
-	
-	auto now = std::chrono::high_resolution_clock::now();
-	uint64_t current_time = std::chrono::duration_cast<std::chrono::microseconds>(now.time_since_epoch()).count();
-	
-	if (last_time != 0) {
-		uint64_t delta = current_time - last_time;
-		if (delta > 20000) { // If frame took > 20ms
-			if (timing_log) {
-				fprintf(timing_log, "[Engine Timing] HUGE SPIKE: %llu ms\n", delta / 1000);
-				fflush(timing_log);
+	// --- Frame-time instrumentation (set MCLA_TIMING_LOG=1 to enable) ---
+	// Records into a fixed ring buffer and only touches the filesystem once per
+	// second. The previous version did fprintf+fflush from inside this function
+	// on every frame that exceeded 20 ms, i.e. a synchronous blocking disk write
+	// on exactly the frames that were already late — which inflated the very
+	// spikes it was measuring.
+	{
+		static const bool timing_enabled = [] {
+			const char* e = getenv("MCLA_TIMING_LOG");
+			return e && *e == '1';
+		}();
+		if (timing_enabled) {
+			static FILE* timing_log = fopen("logs/timing.log", "w");
+			static uint64_t last_time = 0, frame_count = 0, last_fps_time = 0;
+			static uint32_t spikes[4] = {};  // >20ms, >33ms, >50ms, >100ms
+
+			uint64_t current_time = std::chrono::duration_cast<std::chrono::microseconds>(
+				std::chrono::steady_clock::now().time_since_epoch()).count();
+
+			if (last_time != 0) {
+				uint64_t d = current_time - last_time;
+				if (d > 100000) spikes[3]++;
+				else if (d > 50000) spikes[2]++;
+				else if (d > 33000) spikes[1]++;
+				else if (d > 20000) spikes[0]++;
+			}
+			last_time = current_time;
+
+			frame_count++;
+			if (last_fps_time == 0) last_fps_time = current_time;
+			if (current_time - last_fps_time >= 1000000 && timing_log) {
+				fprintf(timing_log,
+					"fps=%llu  spikes: >20ms=%u >33ms=%u >50ms=%u >100ms=%u\n",
+					(unsigned long long)frame_count, spikes[0], spikes[1], spikes[2], spikes[3]);
+				frame_count = 0;
+				last_fps_time = current_time;
+				spikes[0] = spikes[1] = spikes[2] = spikes[3] = 0;
 			}
 		}
 	}
-	last_time = current_time;
-
-	frame_count++;
-	if (last_fps_time == 0) last_fps_time = current_time;
-	if (current_time - last_fps_time >= 1000000) {
-		if (timing_log) {
-			fprintf(timing_log, "[Engine Timing] Dynamic FPS: %llu | FrameTime: %.2f ms\n", frame_count, 1000.0 / (double)frame_count);
-			fflush(timing_log);
-		}
-		frame_count = 0;
-		last_fps_time = current_time;
-	}
 	// --------------------------------
-	
+
 	// mftb r11
 	ctx.r11.u64 = REX_QUERY_TIMEBASE();
 	// rotlwi r10,r11,0
@@ -57375,6 +57384,14 @@ loc_821BDA90:
 	temp.f32 = float(ctx.f0.f64);
 	REX_STORE_U32(ctx.r3.u32 + 8, temp.u32);
 	// bne cr6,0x821bdbc8
+	// --- 60 FPS / Game Speed Fix (Xenia patch 0x821BDB08 = 0x4800012C) ---
+	// This instruction, at guest address 0x821BDB08, is the branch the Xenia
+	// patch overwrites with `b 0x821BDC34`. Taking it unconditionally skips
+	// BOTH the fixed-timestep branch (loc_821BDBC8, which throws away the
+	// measured delta and substitutes 1.0/target_fps) and the 30 Hz accumulator
+	// spinlock (loc_821BDB58/loc_821BDB80). The real delta already stored to
+	// r3+8 / r3+88 two instructions above is what the engine then consumes.
+	goto loc_821BDC34;
 	if (!ctx.cr6.eq) goto loc_821BDBC8;
 	// lbz r10,58(r3)
 	ctx.r10.u64 = REX_LOAD_U8(ctx.r3.u32 + 58);
@@ -57431,8 +57448,9 @@ loc_821BDB58:
 	ctx.f11.f64 = double(temp.f32);
 	// fcmpu cr6,f12,f11
 	ctx.cr6.compare(ctx.f12.f64, ctx.f11.f64);
-	// 60 FPS Patch: b 0x821bdc34
-	goto loc_821BDC34;
+	// (The 60 FPS patch previously sat here, at guest 0x821BDB68. That is ~0x60
+	// bytes past the address Xenia patches; it left the loc_821BDBC8
+	// fixed-timestep path fully live. Moved to 0x821BDB08 above.)
 	// fcmpu cr6,f0,f12
 	ctx.cr6.compare(ctx.f0.f64, ctx.f12.f64);
 	// bge cr6,0x821bdb80
