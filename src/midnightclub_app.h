@@ -61,8 +61,15 @@ class MidnightclubApp : public rex::ReXApp {
     SetFlag("d3d12_bindless", "true");
     SetFlag("d3d12_pipeline_creation_threads", "8");
     SetFlag("d3d12_readback_resolve", "false"); // Disables CPU-blocking eDRAM sync barriers
-    // Was "d3d12_clear_memory_page_state" (no such cvar); correct name has no prefix.
-    SetFlag("clear_memory_page_state", "false");
+    // DO NOT set clear_memory_page_state=false. The SDK describes it as
+    // "Refresh page-valid state from GPU-written memory at frame end. Disable
+    // for minor CPU overhead reduction, but may break memory coherency."
+    // Breaking coherency is exactly what makes the render-to-texture minimap
+    // flicker as a white box. This was previously written as
+    // "d3d12_clear_memory_page_state", which is not a registered cvar, so the
+    // call was silently ignored and the default (enabled) stayed in force.
+    // Correcting the name turned a no-op into a real regression. Left at the
+    // default deliberately — the CPU saving is not worth the coherency loss.
     SetFlag("readback_memexport_fast", "true");
     SetFlag("d3d12_allow_variable_refresh_rate_and_tearing", "true");
 
