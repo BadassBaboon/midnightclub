@@ -36,17 +36,20 @@ class MidnightclubApp : public rex::ReXApp {
   void OnPreSetup(rex::RuntimeConfig& config) override {
     config.gpu_plugin = "xenos";
 
-    // 1. Internal Resolution Scaling (2 = 2x Native 1440p Render Targets)
-    rex::cvar::SetFlagByName("resolution_scale", "2");
+    // 1. Internal Resolution Scaling (1 = Native Render Targets to prevent readback stalls)
+    rex::cvar::SetFlagByName("resolution_scale", "1");
     rex::cvar::SetFlagByName("anisotropic_override", "16");
     rex::cvar::SetFlagByName("gpu_allow_invalid_fetch_constants", "true");
 
-    // 2. Fix UI / Minimap White Box Flickering (Synchronous Shader Compilation)
-    rex::cvar::SetFlagByName("async_shader_compilation", "false");
+    // 2. Fix UI / Minimap White Box Flickering
+    // (Note: d3d12_readback_resolve fixes the minimap now, so we can re-enable async shaders to fix stuttering!)
+    rex::cvar::SetFlagByName("async_shader_compilation", "true");
+    rex::cvar::SetFlagByName("mount_cache", "true"); // Cache RPF archives in RAM to fix streaming hitches
 
     // 3. Modern GPU & CPU Performance Optimizations (D3D12 Bindless + Multi-threading)
     rex::cvar::SetFlagByName("d3d12_bindless", "true");
     rex::cvar::SetFlagByName("d3d12_pipeline_creation_threads", "8");
+    rex::cvar::SetFlagByName("d3d12_readback_resolve", "true"); // Fixes minimap/UI textures not rendering
     rex::cvar::SetFlagByName("readback_memexport_fast", "true");
     rex::cvar::SetFlagByName("d3d12_allow_variable_refresh_rate_and_tearing", "true");
 

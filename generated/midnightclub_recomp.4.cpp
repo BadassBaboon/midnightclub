@@ -1,6 +1,7 @@
 #include "midnightclub_init.h"
 #include <chrono>
 #include <thread>
+#include <cstdio>
 
 DEFINE_REX_FUNC(sub_821A5CD8) {
 	REX_FUNC_PROLOGUE();
@@ -57261,22 +57262,35 @@ DEFINE_REX_FUNC(sub_821BDA90) {
 	REX_FUNC_PROLOGUE();
 	PPCRegister temp{};
 loc_821BDA90:
-	// --- 60 FPS C++ Frame Limiter ---
+	// --- 60 FPS High-Precision Limiter & Logger ---
 	static uint64_t last_time = 0;
-	uint64_t current_time = std::chrono::duration_cast<std::chrono::microseconds>(
-		std::chrono::high_resolution_clock::now().time_since_epoch()).count();
+	static uint64_t frame_count = 0;
+	static uint64_t last_fps_time = 0;
+	
+	auto now = std::chrono::high_resolution_clock::now();
+	uint64_t current_time = std::chrono::duration_cast<std::chrono::microseconds>(now.time_since_epoch()).count();
 	
 	if (last_time != 0) {
 		uint64_t elapsed = current_time - last_time;
-		if (elapsed < 16666) { // 60 FPS = 16.666 ms
-			std::this_thread::sleep_for(std::chrono::microseconds(16666 - elapsed));
-			current_time = std::chrono::duration_cast<std::chrono::microseconds>(
-				std::chrono::high_resolution_clock::now().time_since_epoch()).count();
+		// Spin lock for precision (std::this_thread::sleep_for is notoriously inaccurate on Windows)
+		while (elapsed < 16666) {
+			std::this_thread::yield();
+			now = std::chrono::high_resolution_clock::now();
+			current_time = std::chrono::duration_cast<std::chrono::microseconds>(now.time_since_epoch()).count();
+			elapsed = current_time - last_time;
 		}
 	}
 	last_time = current_time;
-	// --------------------------------
 
+	frame_count++;
+	if (last_fps_time == 0) last_fps_time = current_time;
+	if (current_time - last_fps_time >= 1000000) {
+		printf("[Engine Timing] FPS: %llu | FrameTime: %.2f ms\n", frame_count, 1000.0 / (double)frame_count);
+		frame_count = 0;
+		last_fps_time = current_time;
+	}
+	// --------------------------------
+	
 	// mftb r11
 	ctx.r11.u64 = REX_QUERY_TIMEBASE();
 	// rotlwi r10,r11,0
