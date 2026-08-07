@@ -46,10 +46,11 @@ class MidnightclubApp : public rex::ReXApp {
     rex::cvar::SetFlagByName("async_shader_compilation", "true");
     rex::cvar::SetFlagByName("mount_cache", "true"); // Cache RPF archives in RAM to fix streaming hitches
 
-    // 3. Modern GPU & CPU Performance Optimizations (D3D12 Bindless + Multi-threading)
+    // 3. Modern GPU & CPU Performance Optimizations (D3D12 Bindless + Async Resolves)
     rex::cvar::SetFlagByName("d3d12_bindless", "true");
     rex::cvar::SetFlagByName("d3d12_pipeline_creation_threads", "8");
-    rex::cvar::SetFlagByName("d3d12_readback_resolve", "true"); // Fixes minimap/UI textures not rendering
+    rex::cvar::SetFlagByName("d3d12_readback_resolve", "false"); // Disables CPU-blocking eDRAM sync barriers
+    rex::cvar::SetFlagByName("d3d12_clear_memory_page_state", "false");
     rex::cvar::SetFlagByName("readback_memexport_fast", "true");
     rex::cvar::SetFlagByName("d3d12_allow_variable_refresh_rate_and_tearing", "true");
 
@@ -114,7 +115,7 @@ class MidnightclubApp : public rex::ReXApp {
     };
     signal(SIGABRT, abort_handler);
 
-    // Register t: drive — game uses it for city/art/collision data (.loc files etc.)
+    // Register t: drive - game uses it for city/art/collision data (.loc files etc.)
     rex::Runtime::instance()->file_system()->RegisterSymbolicLink(
         "t:", "\\Device\\Harddisk0\\Partition1");
 

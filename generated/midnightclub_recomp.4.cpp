@@ -57262,22 +57262,23 @@ DEFINE_REX_FUNC(sub_821BDA90) {
 	REX_FUNC_PROLOGUE();
 	PPCRegister temp{};
 loc_821BDA90:
-	// --- 60 FPS High-Precision Limiter & Logger ---
+	// --- Dynamic Real-Time DeltaTime Logger ---
 	static uint64_t last_time = 0;
 	static uint64_t frame_count = 0;
 	static uint64_t last_fps_time = 0;
+	static FILE* timing_log = nullptr;
+	if (!timing_log) timing_log = fopen("logs/timing.log", "w");
 	
 	auto now = std::chrono::high_resolution_clock::now();
 	uint64_t current_time = std::chrono::duration_cast<std::chrono::microseconds>(now.time_since_epoch()).count();
 	
 	if (last_time != 0) {
-		uint64_t elapsed = current_time - last_time;
-		// Spin lock for precision (std::this_thread::sleep_for is notoriously inaccurate on Windows)
-		while (elapsed < 16666) {
-			std::this_thread::yield();
-			now = std::chrono::high_resolution_clock::now();
-			current_time = std::chrono::duration_cast<std::chrono::microseconds>(now.time_since_epoch()).count();
-			elapsed = current_time - last_time;
+		uint64_t delta = current_time - last_time;
+		if (delta > 20000) { // If frame took > 20ms
+			if (timing_log) {
+				fprintf(timing_log, "[Engine Timing] HUGE SPIKE: %llu ms\n", delta / 1000);
+				fflush(timing_log);
+			}
 		}
 	}
 	last_time = current_time;
@@ -57285,7 +57286,10 @@ loc_821BDA90:
 	frame_count++;
 	if (last_fps_time == 0) last_fps_time = current_time;
 	if (current_time - last_fps_time >= 1000000) {
-		printf("[Engine Timing] FPS: %llu | FrameTime: %.2f ms\n", frame_count, 1000.0 / (double)frame_count);
+		if (timing_log) {
+			fprintf(timing_log, "[Engine Timing] Dynamic FPS: %llu | FrameTime: %.2f ms\n", frame_count, 1000.0 / (double)frame_count);
+			fflush(timing_log);
+		}
 		frame_count = 0;
 		last_fps_time = current_time;
 	}
@@ -57311,6 +57315,15 @@ loc_821BDA90:
 	ctx.f13.f64 = double(temp.f32);
 	// subf r8,r10,r11
 	ctx.r8.u64 = ctx.r11.u64 - ctx.r10.u64;
+	
+	// --- Dynamic Arbitrary FPS / Hitch Physics Fix ---
+	// The Xbox 360 timebase frequency is exactly 50,000,000 Hz.
+	// Cap the maximum delta step to 33.3ms (30 FPS equivalent) to prevent physics 
+	// instability/explosions when streaming threads stall the CPU for 300+ ms.
+	if (ctx.r8.u64 > 1666666) {
+		ctx.r8.u64 = 1666666;
+	}
+	// -------------------------------------------------
 	// lbz r7,56(r3)
 	ctx.r7.u64 = REX_LOAD_U8(ctx.r3.u32 + 56);
 	// lis r6,-32256
