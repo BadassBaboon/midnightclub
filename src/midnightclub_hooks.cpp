@@ -22,8 +22,10 @@
 #include <rex/ppc/context.h>
 
 #include <chrono>
+#include <thread>
 #include <cstdio>
 #include <cstdlib>
+#include <ctime>
 #include <string>
 
 namespace {
@@ -80,7 +82,21 @@ void RecordFrameTime() {
   }();
   if (!enabled) return;
 
-  static std::FILE* log = std::fopen("logs/timing.log", "w");
+  // One file per run. Previously this was a fixed "logs/timing.log" opened
+  // with "w", so back-to-back runs silently destroyed the earlier capture —
+  // which cost us a 60 fps run that had to be repeated.
+  static std::FILE* log = [] () -> std::FILE* {
+    std::time_t t = std::time(nullptr);
+    std::tm tm{};
+    localtime_s(&tm, &t);
+    char name[128];
+    const char* cap = std::getenv("MCLA_FPS_CAP");
+    std::snprintf(name, sizeof(name), "logs/timing_%04d%02d%02d_%02d%02d%02d_cap%s.log",
+                  tm.tm_year + 1900, tm.tm_mon + 1, tm.tm_mday,
+                  tm.tm_hour, tm.tm_min, tm.tm_sec,
+                  (cap && *cap) ? cap : "none");
+    return std::fopen(name, "w");
+  }();
   static uint64_t last = 0, frames = 0, last_report = 0;
   static uint64_t start = 0, last_hist = 0;
   static uint32_t spikes[4] = {};
@@ -155,6 +171,69 @@ void RecordFrameTime() {
   if (wrote) std::fflush(log);
 }
 
+// Time-based frame limiter.
+//
+// Disabling vsync removed the 15.625 ms timer grid and gained ~30% throughput,
+// but it also removed the only thing that was throttling presentation at all.
+// The game then free-runs at 70-100+ fps in light scenes, and MCLA has
+// frame-rate-dependent logic: the intro BIK movies play roughly 2.5x too fast
+// at ~75 fps.
+//
+// Note this is NOT fixable with the guest's present-interval field. That field
+// only means anything to DXGI when vsync is on; with vsync off, Present() does
+// not wait no matter what interval is requested. Restoring the guest value
+// (MCLA_PRESENT_INTERVAL=orig) left the movie just as fast and additionally
+// desynchronised the renderer's alternate-frame work, producing shadow flicker.
+//
+// So the throttle has to be ours, and it has to be time-based rather than
+// vblank-based, or we reintroduce quantization. Sleep coarsely to within ~1.5 ms
+// of the target (accurate now that timeBeginPeriod(1) is in force), then spin
+// the remainder.
+//
+// MCLA_FPS_CAP: target fps, 0 or unset = uncapped.
+void LimitFrameRate() {
+  static const double period_us = [] {
+    double fps = 0.0;
+    if (const char* e = std::getenv("MCLA_FPS_CAP")) fps = std::atof(e);
+    if (fps < 1.0) return 0.0;
+    if (fps > 1000.0) fps = 1000.0;
+    return 1000000.0 / fps;
+  }();
+  if (period_us <= 0.0) return;
+
+  static uint64_t next_us = 0;
+  auto now_us = [] {
+    return static_cast<uint64_t>(
+        std::chrono::duration_cast<std::chrono::microseconds>(
+            std::chrono::steady_clock::now().time_since_epoch())
+            .count());
+  };
+
+  uint64_t now = now_us();
+  if (next_us == 0) {
+    next_us = now + static_cast<uint64_t>(period_us);
+    return;
+  }
+
+  if (now < next_us) {
+    // Coarse sleep to within 1.5 ms, then spin. Sleep granularity is ~1 ms
+    // because OnPostSetup raised the process timer resolution.
+    uint64_t remaining = next_us - now;
+    if (remaining > 1500) {
+      std::this_thread::sleep_for(std::chrono::microseconds(remaining - 1500));
+    }
+    while (now_us() < next_us) {
+      std::this_thread::yield();
+    }
+  }
+
+  uint64_t after = now_us();
+  next_us += static_cast<uint64_t>(period_us);
+  // If we fell far behind (streaming stall, alt-tab), resynchronise rather than
+  // sprinting to catch up on a backlog of missed frames.
+  if (next_us < after) next_us = after + static_cast<uint64_t>(period_us);
+}
+
 }  // namespace
 
 // Signatures must match what rexglue emits: only the registers named in the
@@ -162,7 +241,13 @@ void RecordFrameTime() {
 // `extern` declarations codegen writes above each call site.
 
 // 0x821BDAB0, after `subf r8,r10,r11`.
+//
+// The limiter runs here, after this frame's delta has been computed from the
+// timebase read a few instructions above. The sleep therefore lands in the
+// NEXT frame's delta, which is correct: in steady state every delta contains
+// exactly one limiter sleep.
 void MCLAFrameDelta(PPCRegister& r8) {
+  LimitFrameRate();
   RecordFrameTime();
   const uint64_t cap = MaxFrameTicks();
   if (r8.u64 > cap) {
