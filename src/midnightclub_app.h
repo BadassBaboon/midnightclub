@@ -56,9 +56,17 @@ class MidnightclubApp : public rex::ReXApp {
                         name + " = " + value);
   }
 
-  // GPU-plugin cvars. Applied from BOTH OnPreSetup and OnPostSetup: the former
-  // is where they belong, but the xenos plugin is not loaded yet at that point
-  // so they do not bind. The effective_config dump shows which phase wins.
+  // GPU-plugin cvars. These MUST be applied from OnPostSetup, not OnPreSetup.
+  //
+  // Everything declared in rex/graphics/flags.h lives in the xenos plugin DLL,
+  // which Runtime::Setup() loads *after* OnPreSetup returns. Setting them any
+  // earlier does nothing at all: measured across four runs, every one of these
+  // reported `FAIL pre` / `ok post`. This silently discarded the entire GPU
+  // configuration for the lifetime of the project — most consequentially vsync,
+  // which stayed at its default of `true` while the config said `false`.
+  //
+  // Window/display cvars (rex/ui/flags.h) live in rexruntime and DO bind from
+  // OnPreSetup, which is why those were the only settings that ever worked.
   void ApplyGpuFlags(const char* phase) {
     SetFlag(phase, "resolution_scale", "1");
     // NOTE: anisotropic_override is an enum index, not a multiplier. It read
@@ -81,7 +89,8 @@ class MidnightclubApp : public rex::ReXApp {
   void OnPreSetup(rex::RuntimeConfig& config) override {
     config.gpu_plugin = "xenos";
 
-    ApplyGpuFlags("pre ");
+    // GPU flags are NOT set here — see ApplyGpuFlags. They cannot bind yet.
+
     // NOTE: "mount_cache" is not a cvar in rexglue 0.9.0 — the name appears
     // nowhere in the SDK headers or in rexruntimerd.dll, so the old call here
     // was a silent no-op and RPF archives were never cached in RAM.
@@ -135,7 +144,7 @@ class MidnightclubApp : public rex::ReXApp {
       }
       fprintf(f, "\n=== env overrides ===\n");
       for (const char* e : {"MCLA_REFRESH_RATE", "MCLA_MAX_FRAME_MS",
-                            "MCLA_TIMING_LOG", "MCLA_NO_TIMER_RES", "MCLA_VSYNC",
+                            "MCLA_TIMING_LOG", "MCLA_NO_TIMER_RES", "MCLA_VSYNC", "MCLA_PRESENT_INTERVAL",
                             "REX_LOG_LEVEL"}) {
         const char* v = getenv(e);
         fprintf(f, "%-46s = %s\n", e, v ? v : "<not set>");
@@ -172,12 +181,20 @@ class MidnightclubApp : public rex::ReXApp {
   }
 
   void OnPostSetup() override {
-    // Experiment 2.2: the observed frame-time grid is 15.625 ms == 1/64 s,
-    // which is exactly Windows' default timer granularity. It did not move when
-    // video_mode_refresh_rate was swept across 30/60/120/144, so it is not the
-    // guest vblank rate. Raising the process-wide timer resolution to 1 ms is
-    // the direct test of the timer-granularity hypothesis: if the grid
-    // collapses, that was it. Set MCLA_NO_TIMER_RES=1 to skip and A/B it.
+    // PHASE 2 RESULT. Frame times were quantized to a 15.625 ms grid (= 1/64 s,
+    // Windows' default timer granularity). Measured across a 2x2 matrix on a
+    // fixed route, as fraction of frames landing on that grid:
+    //
+    //   timer coarse + vsync on   95% on-grid   37.2 fps   <- original state
+    //   timer  1ms   + vsync on   62% on-grid   40.6 fps   (regrids to true 60Hz)
+    //   timer coarse + vsync off  93% on-grid   40.7 fps   (grid survives)
+    //   timer  1ms   + vsync off  34% on-grid   48.4 fps   <- free-running
+    //
+    // Both are required. Fixing the timer alone just hands pacing to real
+    // vsync; disabling vsync alone leaves the timer grid intact. Together the
+    // distribution goes continuous and throughput rises ~30%.
+    //
+    // MCLA_NO_TIMER_RES=1 restores the coarse timer for A/B comparison.
     if (const char* e = getenv("MCLA_NO_TIMER_RES"); !(e && *e == '1')) {
       timeBeginPeriod(1);
     }

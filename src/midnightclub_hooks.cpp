@@ -24,6 +24,7 @@
 #include <chrono>
 #include <cstdio>
 #include <cstdlib>
+#include <string>
 
 namespace {
 
@@ -178,6 +179,20 @@ bool MCLAUseRealDelta(PPCCRRegister& cr6) {
 }
 
 // 0x82419AA0, after `li r11,2`. Present interval in vblanks: 2 -> 1.
+//
+// This site is reached when the guest's per-context interval field
+// ([r31+13596]) is 2, i.e. "present every other vblank" = 30 Hz. Neighbouring
+// branches in sub_824199B0 handle 0/1 -> 1, 4 -> 3, 0x80000000 -> 0, so the
+// game does vary this per context.
+//
+// SUSPECT for the intro BIK movies playing too fast: if the movie player paces
+// playback by presents rather than by elapsed time, forcing 1 here doubles its
+// rate, and with vsync off there is no longer anything throttling it.
+// Set MCLA_PRESENT_INTERVAL=orig to leave the guest's value untouched.
 void MCLAPresentInterval(PPCRegister& r11) {
-  r11.s64 = 1;
+  static const bool force = [] {
+    const char* e = std::getenv("MCLA_PRESENT_INTERVAL");
+    return !(e && std::string(e) == "orig");
+  }();
+  if (force) r11.s64 = 1;
 }
