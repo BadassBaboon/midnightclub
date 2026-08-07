@@ -16,9 +16,14 @@
 #include <atomic>
 #include <mutex>
 #include <unordered_map>
+#include <filesystem>
+#include <string>
+#include <vector>
 #include <windows.h>
 #include <dbghelp.h>
 #pragma comment(lib, "dbghelp.lib")
+#include <timeapi.h>
+#pragma comment(lib, "winmm.lib")
 
 #include <rex/graphics/flags.h>
 #include <rex/logging/api.h>
@@ -34,53 +39,113 @@ class MidnightclubApp : public rex::ReXApp {
         PPCImageConfig));
   }
 
-  // SetFlagByName silently returns false for names that were never registered,
-  // so a typo'd cvar looks identical to one that was applied. Assert loudly.
-  static void SetFlag(const char* name, const char* value) {
-    if (!rex::cvar::SetFlagByName(name, value)) {
-      fprintf(stderr, "[cvar] UNKNOWN FLAG '%s' (value '%s') — ignored!\n", name, value);
-    }
+  // Record of every SetFlag attempt, so failures are visible in a file rather
+  // than on stderr — which is invisible under `Start-Process`.
+  static inline std::vector<std::string>& FlagLog() {
+    static std::vector<std::string> log;
+    return log;
+  }
+
+  // SetFlagByName returns false for names that were never registered. Critically,
+  // cvars defined in the GPU plugin DLL are NOT registered until the plugin is
+  // loaded, which happens during Runtime::Setup() — i.e. AFTER OnPreSetup. So
+  // GPU flags set from OnPreSetup silently fail to bind.
+  static void SetFlag(const char* phase, const char* name, const char* value) {
+    bool ok = rex::cvar::SetFlagByName(name, value);
+    FlagLog().push_back(std::string(ok ? "  ok   " : "  FAIL ") + phase + "  " +
+                        name + " = " + value);
+  }
+
+  // GPU-plugin cvars. Applied from BOTH OnPreSetup and OnPostSetup: the former
+  // is where they belong, but the xenos plugin is not loaded yet at that point
+  // so they do not bind. The effective_config dump shows which phase wins.
+  void ApplyGpuFlags(const char* phase) {
+    SetFlag(phase, "resolution_scale", "1");
+    // NOTE: anisotropic_override is an enum index, not a multiplier. It read
+    // back as 3 (= 4x) when we asked for "16". Leaving at default until the
+    // binding problem is fixed and we know the real scale.
+    SetFlag(phase, "gpu_allow_invalid_fetch_constants", "true");
+    SetFlag(phase, "async_shader_compilation", "true");
+    SetFlag(phase, "d3d12_bindless", "true");
+    SetFlag(phase, "d3d12_readback_resolve", "false");
+    SetFlag(phase, "readback_memexport_fast", "true");
+    // vsync has been reading back as `true` (the default) in every run so far,
+    // despite being set to false here since the beginning — presentation has
+    // been vsync-locked the whole time. Now that it can actually bind, keep it
+    // independently switchable via MCLA_VSYNC so it can be A/B'd against the
+    // timer-resolution change rather than confounded with it.
+    const char* vs = getenv("MCLA_VSYNC");
+    SetFlag(phase, "vsync", (vs && *vs) ? vs : "false");
   }
 
   void OnPreSetup(rex::RuntimeConfig& config) override {
     config.gpu_plugin = "xenos";
 
-    // 1. Internal Resolution Scaling (1 = Native Render Targets to prevent readback stalls)
-    SetFlag("resolution_scale", "1");
-    SetFlag("anisotropic_override", "16");
-    SetFlag("gpu_allow_invalid_fetch_constants", "true");
-
-    // 2. Fix UI / Minimap White Box Flickering
-    // (Note: d3d12_readback_resolve fixes the minimap now, so we can re-enable async shaders to fix stuttering!)
-    SetFlag("async_shader_compilation", "true");
+    ApplyGpuFlags("pre ");
     // NOTE: "mount_cache" is not a cvar in rexglue 0.9.0 — the name appears
     // nowhere in the SDK headers or in rexruntimerd.dll, so the old call here
     // was a silent no-op and RPF archives were never cached in RAM.
-
-    // 3. Modern GPU & CPU Performance Optimizations (D3D12 Bindless + Async Resolves)
-    SetFlag("d3d12_bindless", "true");
-    SetFlag("d3d12_pipeline_creation_threads", "8");
-    SetFlag("d3d12_readback_resolve", "false"); // Disables CPU-blocking eDRAM sync barriers
+    //
     // DO NOT set clear_memory_page_state=false. The SDK describes it as
     // "Refresh page-valid state from GPU-written memory at frame end. Disable
     // for minor CPU overhead reduction, but may break memory coherency."
-    // Breaking coherency is exactly what makes the render-to-texture minimap
-    // flicker as a white box. This was previously written as
-    // "d3d12_clear_memory_page_state", which is not a registered cvar, so the
-    // call was silently ignored and the default (enabled) stayed in force.
-    // Correcting the name turned a no-op into a real regression. Left at the
-    // default deliberately — the CPU saving is not worth the coherency loss.
-    SetFlag("readback_memexport_fast", "true");
-    SetFlag("d3d12_allow_variable_refresh_rate_and_tearing", "true");
+    // Breaking coherency is what makes the minimap flicker as a white box.
 
-    // 4. Display & Frame Presentation
-    SetFlag("window_width", "2560");
-    SetFlag("window_height", "1440");
-    SetFlag("video_mode_width", "2560");
-    SetFlag("video_mode_height", "1440");
-    SetFlag("video_mode_refresh_rate", "60");
-    SetFlag("vsync", "false");
-    SetFlag("fullscreen", "true"); // Bypass DWM VBlank waiting
+    SetFlag("pre ", "d3d12_allow_variable_refresh_rate_and_tearing", "true");
+
+    // Window / display cvars live in rexruntime, which IS loaded here, so
+    // unlike the GPU-plugin flags these do bind from OnPreSetup.
+    SetFlag("pre ", "window_width", "2560");
+    SetFlag("pre ", "window_height", "1440");
+    SetFlag("pre ", "video_mode_width", "2560");
+    SetFlag("pre ", "video_mode_height", "1440");
+    // Phase 2, Experiment 2.1: is the guest vblank worker the source of the
+    // ~15.4 ms frame-time quantum? Sweep this without rebuilding via
+    // MCLA_REFRESH_RATE. If the quantum tracks this value, the vblank worker
+    // paces the game and we control it directly.
+    const char* refresh = getenv("MCLA_REFRESH_RATE");
+    SetFlag("pre ", "video_mode_refresh_rate", (refresh && *refresh) ? refresh : "60");
+
+    SetFlag("pre ", "fullscreen", "true"); // Bypass DWM VBlank waiting
+  }
+
+  // Dump the *effective* value of every cvar we care about, so a run that
+  // shows no behavioural change can be distinguished from a setting that never
+  // applied. Two settings in this file were silently doing nothing before we
+  // started checking, so this is not hypothetical.
+  void DumpEffectiveConfig() {
+    static const char* kWatched[] = {
+        "video_mode_refresh_rate", "video_mode_width", "video_mode_height",
+        "vsync", "fullscreen", "window_width", "window_height",
+        "resolution_scale", "async_shader_compilation", "clear_memory_page_state",
+        "d3d12_bindless", "d3d12_readback_resolve", "readback_resolve",
+        "readback_memexport_fast", "d3d12_pipeline_creation_threads",
+        "d3d12_allow_variable_refresh_rate_and_tearing", "d3d12_tiled_shared_memory",
+        "render_target_path_d3d12", "texture_cache_memory_limit_soft",
+        "texture_cache_memory_limit_hard",
+        "texture_cache_memory_limit_render_to_texture",
+        "anisotropic_override", "gpu_allow_invalid_fetch_constants", "log_level",
+    };
+    std::filesystem::create_directories("logs");
+    if (FILE* f = fopen("logs/effective_config.txt", "w")) {
+      fprintf(f, "=== effective cvar values (after OnPreSetup) ===\n");
+      for (const char* name : kWatched) {
+        std::string v = rex::cvar::GetFlagByName(name);
+        fprintf(f, "%-46s = %s\n", name, v.empty() ? "<empty/unset>" : v.c_str());
+      }
+      fprintf(f, "\n=== env overrides ===\n");
+      for (const char* e : {"MCLA_REFRESH_RATE", "MCLA_MAX_FRAME_MS",
+                            "MCLA_TIMING_LOG", "MCLA_NO_TIMER_RES", "MCLA_VSYNC",
+                            "REX_LOG_LEVEL"}) {
+        const char* v = getenv(e);
+        fprintf(f, "%-46s = %s\n", e, v ? v : "<not set>");
+      }
+      fprintf(f, "\n=== SetFlagByName results (pre = OnPreSetup, post = OnPostSetup) ===\n");
+      for (const std::string& line : FlagLog()) {
+        fprintf(f, "%s\n", line.c_str());
+      }
+      fclose(f);
+    }
   }
 
   // NOTE ON LOG LEVEL: this build defaults to `trace` because BuildLogConfig
@@ -107,6 +172,21 @@ class MidnightclubApp : public rex::ReXApp {
   }
 
   void OnPostSetup() override {
+    // Experiment 2.2: the observed frame-time grid is 15.625 ms == 1/64 s,
+    // which is exactly Windows' default timer granularity. It did not move when
+    // video_mode_refresh_rate was swept across 30/60/120/144, so it is not the
+    // guest vblank rate. Raising the process-wide timer resolution to 1 ms is
+    // the direct test of the timer-granularity hypothesis: if the grid
+    // collapses, that was it. Set MCLA_NO_TIMER_RES=1 to skip and A/B it.
+    if (const char* e = getenv("MCLA_NO_TIMER_RES"); !(e && *e == '1')) {
+      timeBeginPeriod(1);
+    }
+
+    // Re-apply GPU-plugin cvars now that the xenos plugin is actually loaded.
+    ApplyGpuFlags("post");
+
+    DumpEffectiveConfig();
+
     // Install SIGABRT handler that dumps a stack trace to crash_stack.txt
     // before the process dies, so we can see what called abort().
     static auto abort_handler = [](int) {
