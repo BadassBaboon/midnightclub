@@ -68,7 +68,28 @@ class MidnightclubApp : public rex::ReXApp {
   // Window/display cvars (rex/ui/flags.h) live in rexruntime and DO bind from
   // OnPreSetup, which is why those were the only settings that ever worked.
   void ApplyGpuFlags(const char* phase) {
-    SetFlag(phase, "resolution_scale", "1");
+    // Internal render resolution multiplier. The guest renders 1280x720, so 2
+    // gives 2560x1440 render targets — which is what the Xenia Edge setup that
+    // reportedly looks correct on this title was using. Costs GPU time and
+    // texture cache pressure, both of which we have headroom for on a 3090.
+    const char* res = getenv("MCLA_RESOLUTION_SCALE");
+    SetFlag(phase, "resolution_scale", (res && *res) ? res : "1");
+
+    // eDRAM emulation path: "d3d12_rov" or "d3d12_rtv". Unset = auto.
+    //
+    // ROV (rasterizer-ordered views) emulates the Xbox 360's eDRAM with exact
+    // per-pixel ordering, so blending, alpha and depth behave as the hardware
+    // did. RTV approximates it with real render targets, and approximation
+    // error in blending is the classic cause of wrong-coloured lighting — the
+    // green/red glitching seen on cars here. The startup log confirms the
+    // adapter supports ROVs ("Rasterizer-ordered views: yes").
+    //
+    // This is one of the few rendering levers rexglue actually exposes: the
+    // xenos plugin ships as a prebuilt DLL, so upstream Xenia fork fixes cannot
+    // be ported into it.
+    if (const char* rt = getenv("MCLA_RT_PATH"); rt && *rt) {
+      SetFlag(phase, "render_target_path_d3d12", rt);
+    }
 
     // anisotropic_override is an ENUM INDEX, not a multiplier:
     //   -1 = no override, 0 = off, 1 = 1x, 2 = 2x, 3 = 4x, 4 = 8x, 5 = 16x
@@ -176,6 +197,7 @@ class MidnightclubApp : public rex::ReXApp {
       for (const char* e : {"MCLA_REFRESH_RATE", "MCLA_MAX_FRAME_MS",
                             "MCLA_TIMING_LOG", "MCLA_NO_TIMER_RES", "MCLA_VSYNC", "MCLA_PRESENT_INTERVAL", "MCLA_FPS_CAP",
                             "MCLA_ALLOW_INVALID_FETCH", "MCLA_SUBSTEPS",
+                            "MCLA_RT_PATH", "MCLA_RESOLUTION_SCALE",
                             "REX_LOG_LEVEL"}) {
         const char* v = getenv(e);
         fprintf(f, "%-46s = %s\n", e, v ? v : "<not set>");
