@@ -181,8 +181,39 @@ it may throttle logic to 30 Hz.
 fixed-step overwrite. Original behaviour for that state, no evidence it is
 wrong, deliberately left alone.
 
-- [ ] **Re-test.** Confirm accumulators advance ~1.0/s, speed still correct at
-      30 fps, and check whether the BIK movies change.
+- [x] **Re-tested — and it regressed 60 fps to a real, measured 2x.**
+      Narrowing the bypass let `loc_821BDB90` run again, and that path overwrites
+      `[r3+8]` with the fixed 33.3 ms step regardless of real frame time:
+      SIM RATE 4.00x and ACCUM +1.97/s at the 60 cap. The risk was noted in this
+      file as "deliberately left alone" — identified and then not acted on.
+
+### Fixed: `loc_821BDB90` now uses the measured delta
+
+New hook `MCLAFixedStepPath` at `0x821BDB90`, `after_instruction`, registers
+`["r3", "f11"]`. It replaces the freshly-loaded fixed step in `f11` with the
+measured unscaled delta from `[r3+88]` (still intact at that point — written at
+`0x821BDAF8`, not clobbered until `0x821BDB9C`). Every instruction downstream
+then does the right thing unaided: `f0` becomes measured*timescale, both stores
+write measured values, and the accumulators advance by the measured delta.
+
+Chosen over bypassing the block, which would have lost its accumulator updates —
+the exact mistake that froze `[r3+20]` in the first place.
+
+**Verified:**
+
+| | SIM RATE | ACCUM | `loc_821BDB90` hits |
+|---|---|---|---|
+| 30 cap | 2.00-2.01x | +1.00/s | 30-31/sec |
+| 60 cap | 2.00-2.01x | +1.01/s | 57-61/sec |
+
+Rate-invariant, accumulators tracking real time, and 60 fps no longer feels 2x.
+
+**Key discovery: `loc_821BDB90` is taken EVERY frame**, not occasionally —
+`[r3+58]` or `[r3+60]` is always set during gameplay. So the original wide
+bypass at `0x821BDB08` was accidentally correct about speed: it worked by
+skipping the main fixed-step path, not for any of the reasons attached to it at
+the time. Float registers work in a hook's `registers` list, passed as
+`PPCRegister&` with the value in `.f64`.
 
 ### Original concern (superseded by the above)
 
