@@ -36,19 +36,27 @@ class MidnightclubApp : public rex::ReXApp {
   void OnPreSetup(rex::RuntimeConfig& config) override {
     config.gpu_plugin = "xenos";
 
-    // Internal Resolution Scaling (2x = 1440p) & Quality Overrides
-    rex::cvar::SetFlagByName("draw_resolution_scale_x", "2");
-    rex::cvar::SetFlagByName("draw_resolution_scale_y", "2");
+    // 1. Internal Resolution Scaling (2 = 2x Native 1440p Render Targets)
+    rex::cvar::SetFlagByName("resolution_scale", "2");
     rex::cvar::SetFlagByName("anisotropic_override", "16");
     rex::cvar::SetFlagByName("gpu_allow_invalid_fetch_constants", "true");
 
-    // Display & Frame Pacing (Window 2560x1440, Console Refresh 60Hz)
+    // 2. Fix UI / Minimap White Box Flickering (Synchronous Shader Compilation)
+    rex::cvar::SetFlagByName("async_shader_compilation", "false");
+
+    // 3. Modern GPU & CPU Performance Optimizations (D3D12 Bindless + Multi-threading)
+    rex::cvar::SetFlagByName("d3d12_bindless", "true");
+    rex::cvar::SetFlagByName("d3d12_pipeline_creation_threads", "8");
+    rex::cvar::SetFlagByName("readback_memexport_fast", "true");
+    rex::cvar::SetFlagByName("d3d12_allow_variable_refresh_rate_and_tearing", "true");
+
+    // 4. Display & Frame Presentation
     rex::cvar::SetFlagByName("window_width", "2560");
     rex::cvar::SetFlagByName("window_height", "1440");
     rex::cvar::SetFlagByName("video_mode_width", "2560");
     rex::cvar::SetFlagByName("video_mode_height", "1440");
     rex::cvar::SetFlagByName("video_mode_refresh_rate", "60");
-    rex::cvar::SetFlagByName("vsync", "true");
+    rex::cvar::SetFlagByName("vsync", "false");
   }
 
   void OnConfigurePaths(rex::PathConfig& paths) override {
