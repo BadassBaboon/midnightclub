@@ -20,6 +20,10 @@
 #include <rex/chrono/clock.h>
 #include <rex/hook.h>
 #include <rex/ppc/context.h>
+#include <rex/runtime.h>
+
+#include <bit>
+#include <cstring>
 
 #include <chrono>
 #include <thread>
@@ -27,6 +31,12 @@
 #include <cstdlib>
 #include <ctime>
 #include <string>
+
+// Substep instrumentation, defined below with the hooks.
+extern int32_t g_substep_last, g_substep_min, g_substep_max;
+extern uint64_t g_substep_sum, g_substep_n;
+extern double g_sim_time_sum;
+extern uint64_t g_sim_iters;
 
 namespace {
 
@@ -56,6 +66,47 @@ uint64_t MaxFrameTicks() {
     return static_cast<uint64_t>(ms * 0.001 * static_cast<double>(hz));
   }();
   return ticks;
+}
+
+// --- Engine timing globals, read straight out of guest memory ---
+//
+// The main loop (sub_822C1FA8) publishes a frame delta and its reciprocal to
+// two globals at 0x822C2424:
+//
+//   822c2404  lfs   f0, flt_828747B8(r31)   ; accumulated time
+//   822c2418  fdivs f0, f0, f11             ; / (float)count
+//   822c2424  stfs  f0, flt_827D7508        ; GLOBAL frame delta
+//   822c2428  fdivs f0, f29, f0
+//   822c242c  stfs  f0, flt_827D750C        ; GLOBAL 1/delta
+//
+// The vehicle physics reads the timer object's [r3+8], which sub_821BD910
+// divides correctly by the substep count — and top speed, acceleration and
+// cornering are all confirmed correct at 60 fps. Camera smoothing and traffic
+// AI are NOT correct at 60 fps. If those read these globals instead, then a
+// single wrong value here explains every remaining symptom at once.
+//
+// So: sample them and see whether the delta actually tracks real frame time.
+constexpr uint32_t kGuestFrameDelta   = 0x827D7508;  // flt_827D7508
+constexpr uint32_t kGuestFrameRate    = 0x827D750C;  // flt_827D750C
+constexpr uint32_t kGuestAccumTime    = 0x828747B8;  // flt_828747B8
+constexpr uint32_t kGuestFrameCount   = 0x828747B0;  // dword_828747B0
+constexpr uint32_t kGuestSubstepFixed = 0x8201D29C;  // 0.02, the 50 Hz quantum
+
+float ReadGuestFloat(uint32_t guest_addr) {
+  const uint8_t* base = rex::Runtime::instance()->virtual_membase();
+  if (!base) return 0.0f;
+  uint32_t raw;
+  std::memcpy(&raw, base + guest_addr, sizeof(raw));
+  raw = std::byteswap(raw);  // guest memory is big-endian
+  return std::bit_cast<float>(raw);
+}
+
+int32_t ReadGuestInt(uint32_t guest_addr) {
+  const uint8_t* base = rex::Runtime::instance()->virtual_membase();
+  if (!base) return 0;
+  uint32_t raw;
+  std::memcpy(&raw, base + guest_addr, sizeof(raw));
+  return static_cast<int32_t>(std::byteswap(raw));
 }
 
 // How often to emit the frame-time histogram, in seconds. Each histogram
@@ -98,7 +149,7 @@ void RecordFrameTime() {
     return std::fopen(name, "w");
   }();
   static uint64_t last = 0, frames = 0, last_report = 0;
-  static uint64_t start = 0, last_hist = 0;
+  static uint64_t start = 0, last_hist = 0, last_report_for_sim = 0;
   static uint32_t spikes[4] = {};
   static uint32_t hist[kHistBuckets] = {};
   static uint64_t hist_frames = 0, hist_total_us = 0;
@@ -121,7 +172,7 @@ void RecordFrameTime() {
     hist_total_us += d;
   }
   last = now;
-  if (start == 0) { start = now; last_hist = now; }
+  if (start == 0) { start = now; last_hist = now; last_report_for_sim = now; }
 
   bool wrote = false;
 
@@ -129,9 +180,50 @@ void RecordFrameTime() {
   if (last_report == 0) last_report = now;
   if (now - last_report >= 1000000 && log) {
     wrote = true;
-    std::fprintf(log, "[%6.1fs] fps=%llu  spikes: >20ms=%u >33ms=%u >50ms=%u >100ms=%u\n",
+    // Measured wall-clock frame time this second, vs what the engine believes.
+    // If engine_dt does not track measured_dt, every consumer of the guest
+    // globals is running at the wrong rate — one root cause, many symptoms.
+    double measured_dt_ms = frames ? 1000.0 / frames : 0.0;
+    float engine_dt = ReadGuestFloat(kGuestFrameDelta);
+    float engine_fps = ReadGuestFloat(kGuestFrameRate);
+    float accum = ReadGuestFloat(kGuestAccumTime);
+    int32_t count = ReadGuestInt(kGuestFrameCount);
+
+    std::fprintf(log,
+                 "[%6.1fs] fps=%llu  spikes: >20ms=%u >33ms=%u >50ms=%u >100ms=%u"
+                 "  | measured_dt=%.2fms  engine_dt=%.2fms (%.1f fps)  accum=%.4f count=%d  ratio=%.2f\n",
                  (now - start) / 1e6, static_cast<unsigned long long>(frames),
-                 spikes[0], spikes[1], spikes[2], spikes[3]);
+                 spikes[0], spikes[1], spikes[2], spikes[3],
+                 measured_dt_ms, engine_dt * 1000.0f, engine_fps, accum, count,
+                 (engine_dt > 0.0f) ? (measured_dt_ms / (engine_dt * 1000.0f)) : 0.0);
+
+    // Substep count at 0x822C2434. The loop runs r24+1 times, and the final
+    // pass uses the FULL delta — so simulated time per frame is dt when r24==0
+    // and 2*dt whenever r24 > 0.
+    std::fprintf(log,
+                 "           substep r24: last=%d min=%d max=%d avg=%.2f  ->"
+                 " sim_time_per_frame = %s\n",
+                 g_substep_last, g_substep_min == 0x7FFFFFFF ? -999 : g_substep_min,
+                 g_substep_max == -0x7FFFFFFF ? -999 : g_substep_max,
+                 g_substep_n ? double(g_substep_sum) / g_substep_n : 0.0,
+                 g_substep_max > 0 ? "2x dt  <-- DOUBLE" : "1x dt (correct)");
+    g_substep_min = 0x7FFFFFFF;
+    g_substep_max = -0x7FFFFFFF;
+    g_substep_sum = 0;
+    g_substep_n = 0;
+
+    // GROUND TRUTH: total simulated time advanced during this real second.
+    // 1.00 = correct. 2.00 = the simulation is running at double speed.
+    double real_elapsed = (now - last_report_for_sim) / 1e6;
+    std::fprintf(log,
+                 "           SIM SPEED: advanced %.3f s of game time in %.3f s real"
+                 "  -> %.2fx   (%llu loop iterations)\n",
+                 g_sim_time_sum, real_elapsed,
+                 real_elapsed > 0.0 ? g_sim_time_sum / real_elapsed : 0.0,
+                 static_cast<unsigned long long>(g_sim_iters));
+    g_sim_time_sum = 0.0;
+    g_sim_iters = 0;
+    last_report_for_sim = now;
     frames = 0;
     last_report = now;
     spikes[0] = spikes[1] = spikes[2] = spikes[3] = 0;
@@ -235,6 +327,32 @@ void LimitFrameRate() {
 }
 
 }  // namespace
+
+// Substep count observed at 0x822C2434 this second. Read-only.
+int32_t g_substep_last = -999;
+int32_t g_substep_min = 0x7FFFFFFF;
+int32_t g_substep_max = -0x7FFFFFFF;
+uint64_t g_substep_sum = 0, g_substep_n = 0;
+
+// Total simulated time advanced, summed over every substep-loop iteration.
+double g_sim_time_sum = 0.0;
+uint64_t g_sim_iters = 0;
+
+// 0x822C2478, `lfs f30, 8(r27)` — [r27+8] is the delta for this iteration,
+// just set by sub_821BD910.
+void MCLASubstepDelta(PPCRegister& r27) {
+  g_sim_time_sum += ReadGuestFloat(r27.u32 + 8);
+  g_sim_iters++;
+}
+
+void MCLASubstepCount(PPCRegister& r24) {
+  int32_t v = static_cast<int32_t>(r24.s32);
+  g_substep_last = v;
+  if (v < g_substep_min) g_substep_min = v;
+  if (v > g_substep_max) g_substep_max = v;
+  g_substep_sum += static_cast<uint64_t>(v < 0 ? 0 : v);
+  g_substep_n++;
+}
 
 // Signatures must match what rexglue emits: only the registers named in the
 // hook's `registers` list, passed by reference, with C++ linkage. See the

@@ -9757,6 +9757,10 @@ loc_822C1F98:
 	return;
 }
 
+extern void MCLASubstepCount(PPCRegister& r24);
+
+extern void MCLASubstepDelta(PPCRegister& r27);
+
 DEFINE_REX_FUNC(sub_822C1FA8) {
 	REX_FUNC_PROLOGUE();
 	PPCRegister temp{};
@@ -10419,6 +10423,7 @@ loc_822C2430:
 	// lis r19,-32121
 	ctx.r19.s64 = -2105081856;
 	// mr r23,r24
+	MCLASubstepCount(ctx.r24);
 	ctx.r23.u64 = ctx.r24.u64;
 	// cmpwi cr6,r24,0
 	ctx.cr6.compare<int32_t>(ctx.r24.s32, 0, ctx.xer);
@@ -10457,6 +10462,7 @@ loc_822C2468:
 	// cmplwi cr6,r10,0
 	ctx.cr6.compare<uint32_t>(ctx.r10.u32, 0, ctx.xer);
 	// lfs f30,8(r27)
+	MCLASubstepDelta(ctx.r27);
 	ctx.fpscr.disableFlushMode();
 	temp.u32 = REX_LOAD_U32(ctx.r27.u32 + 8);
 	ctx.f30.f64 = double(temp.f32);

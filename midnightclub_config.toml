@@ -40,6 +40,34 @@ address = 0x82419AA0
 after_instruction = true
 registers = ["r11"]
 
+# 0x822C2434 is `mr r23,r24` in sub_822C1FA8, immediately before the substep
+# loop. r24 is the substep count.
+#
+# The loop runs r24+1 times: r24 iterations with dt/r24, then a final iteration
+# at FULL dt (r23==0 takes the r4=0 path, which makes sub_821BD910 restore the
+# saved full delta). So simulated time per frame is dt when r24==0, but 2*dt
+# whenever r24 > 0.
+#
+# Read-only instrumentation: records the value so we can see whether r24 is 0
+# at 30 fps and non-zero at 60 fps.
+[[midasm_hook]]
+name = "MCLASubstepCount"
+address = 0x822C2434
+registers = ["r24"]
+
+# 0x822C2478 is `lfs f30, 8(r27)` inside the substep loop, immediately after
+# sub_821BD910 has set [r27+8] to the delta for THIS iteration. Summing that
+# across every iteration of every frame gives the total simulated time the
+# engine advances per unit of real time.
+#
+# This is the ground-truth measurement: if the sum over one real second is
+# ~1.0 the simulation is running at correct speed, if it is ~2.0 it is running
+# at double. It settles the question without relying on how the game feels.
+[[midasm_hook]]
+name = "MCLASubstepDelta"
+address = 0x822C2478
+registers = ["r27"]
+
 [functions]
 0x822B88C8 = {}
 0x824B0DE8 = {}
