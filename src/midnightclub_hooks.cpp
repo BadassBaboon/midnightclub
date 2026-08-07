@@ -422,7 +422,30 @@ void MCLASubstepDelta(PPCRegister& r27) {
   g_sim_iters++;
 }
 
+// PHASE 3 EXPERIMENT. The substep loop makes r24+1 passes per frame, and r24 is
+// a constant 2 at every frame rate — so passes/second scales directly with
+// frame rate: 93/s at 30 fps, 180/s at 60 fps, a factor of 1.94.
+//
+// Total simulated time is unaffected (sub_821BD910 divides dt by the count), and
+// every time-based measurement confirms it is correct at both rates. But the
+// per-object Update() calls in the loop body go through vtable+0x68 taking only
+// `this` — no dt argument — so each object fetches its own timestep. Any that
+// uses a per-update constant instead runs at double rate at 60 fps, which is
+// what "camera, steering, AI and traffic all feel 2x" describes.
+//
+// MCLA_SUBSTEPS overrides r24 so we can separate the two possibilities:
+//   - symptom tracks passes/second -> the offenders update per pass
+//   - symptom tracks frames/second regardless -> they update outside this loop
 void MCLASubstepCount(PPCRegister& r24) {
+  static const int32_t override_count = [] {
+    if (const char* e = std::getenv("MCLA_SUBSTEPS")) {
+      int v = std::atoi(e);
+      if (v >= 0 && v <= 8) return v;
+    }
+    return -1;  // no override
+  }();
+  if (override_count >= 0) r24.s64 = override_count;
+
   if (!TimingLogEnabled()) return;
   int32_t v = static_cast<int32_t>(r24.s32);
   g_substep_last = v;

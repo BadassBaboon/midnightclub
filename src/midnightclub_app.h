@@ -175,7 +175,7 @@ class MidnightclubApp : public rex::ReXApp {
       fprintf(f, "\n=== env overrides ===\n");
       for (const char* e : {"MCLA_REFRESH_RATE", "MCLA_MAX_FRAME_MS",
                             "MCLA_TIMING_LOG", "MCLA_NO_TIMER_RES", "MCLA_VSYNC", "MCLA_PRESENT_INTERVAL", "MCLA_FPS_CAP",
-                            "MCLA_ALLOW_INVALID_FETCH",
+                            "MCLA_ALLOW_INVALID_FETCH", "MCLA_SUBSTEPS",
                             "REX_LOG_LEVEL"}) {
         const char* v = getenv(e);
         fprintf(f, "%-46s = %s\n", e, v ? v : "<not set>");
