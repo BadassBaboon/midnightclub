@@ -57257,7 +57257,7 @@ loc_821BDA7C:
 
 extern void MCLAFrameDelta(PPCRegister& r8);
 
-extern bool MCLAUseRealDelta(PPCCRRegister& cr6);
+extern void MCLAUseRealDelta();
 
 DEFINE_REX_FUNC(sub_821BDA90) {
 	REX_FUNC_PROLOGUE();
@@ -57335,11 +57335,6 @@ loc_821BDA90:
 	temp.f32 = float(ctx.f0.f64);
 	REX_STORE_U32(ctx.r3.u32 + 8, temp.u32);
 	// bne cr6,0x821bdbc8
-	if (MCLAUseRealDelta(ctx.cr6)) {
-		goto loc_821BDC34;
-	}
-	else {
-	}
 	if (!ctx.cr6.eq) goto loc_821BDBC8;
 	// lbz r10,58(r3)
 	ctx.r10.u64 = REX_LOAD_U8(ctx.r3.u32 + 58);
@@ -57386,6 +57381,8 @@ loc_821BDA90:
 	REX_STORE_U32(ctx.r3.u32 + 24, temp.u32);
 loc_821BDB58:
 	// lis r11,-32256
+	MCLAUseRealDelta();
+	goto loc_821BDC34;
 	ctx.r11.s64 = -2113929216;
 	// lfs f12,32(r3)
 	ctx.fpscr.disableFlushMode();

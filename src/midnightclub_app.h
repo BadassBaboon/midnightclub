@@ -69,14 +69,33 @@ class MidnightclubApp : public rex::ReXApp {
   // OnPreSetup, which is why those were the only settings that ever worked.
   void ApplyGpuFlags(const char* phase) {
     SetFlag(phase, "resolution_scale", "1");
-    // NOTE: anisotropic_override is an enum index, not a multiplier. It read
-    // back as 3 (= 4x) when we asked for "16". Leaving at default until the
-    // binding problem is fixed and we know the real scale.
-    SetFlag(phase, "gpu_allow_invalid_fetch_constants", "true");
+
+    // anisotropic_override is an ENUM INDEX, not a multiplier:
+    //   -1 = no override, 0 = off, 1 = 1x, 2 = 2x, 3 = 4x, 4 = 8x, 5 = 16x
+    // The original config asked for "16", which is not a valid index — it read
+    // back as 3 (4x). 5 is the value that actually means 16x.
+    SetFlag(phase, "anisotropic_override", "5");
+
     SetFlag(phase, "async_shader_compilation", "true");
     SetFlag(phase, "d3d12_bindless", "true");
     SetFlag(phase, "d3d12_readback_resolve", "false");
     SetFlag(phase, "readback_memexport_fast", "true");
+
+    // d3d12_pipeline_creation_threads: deliberately left at its default of -1
+    // (auto). The original config asked for 8, but that call never bound, so 8
+    // has never actually run. Auto sizes to the host CPU, which is a better
+    // choice than a hardcoded 8 — recording this as a decision rather than
+    // silently dropping the setting.
+
+    // gpu_allow_invalid_fetch_constants: the GPU log warns about texture fetch
+    // constants with an "invalid" type and suggests this flag. It defaults to
+    // false and, because of the OnPreSetup binding bug, has never been enabled
+    // until now. Enabling it changes how those invalid fetches render, so it is
+    // an unvalidated behaviour change — a candidate for the one-off white HUD
+    // seen once during testing. Switchable so it can be A/B'd if that recurs.
+    const char* fetch = getenv("MCLA_ALLOW_INVALID_FETCH");
+    SetFlag(phase, "gpu_allow_invalid_fetch_constants",
+            (fetch && *fetch) ? fetch : "true");
     // vsync has been reading back as `true` (the default) in every run so far,
     // despite being set to false here since the beginning — presentation has
     // been vsync-locked the whole time. Now that it can actually bind, keep it
@@ -84,6 +103,17 @@ class MidnightclubApp : public rex::ReXApp {
     // timer-resolution change rather than confounded with it.
     const char* vs = getenv("MCLA_VSYNC");
     SetFlag(phase, "vsync", (vs && *vs) ? vs : "false");
+  }
+
+  // Pair for timeBeginPeriod(1) in OnPostSetup. Windows restores the timer
+  // resolution on process exit anyway, but leaving a raised system-wide timer
+  // resolution dangling is sloppy and matters if the process ever shuts down
+  // without exiting.
+  void OnShutdown() override {
+    if (timer_res_raised_) {
+      timeEndPeriod(1);
+      timer_res_raised_ = false;
+    }
   }
 
   void OnPreSetup(rex::RuntimeConfig& config) override {
@@ -137,7 +167,7 @@ class MidnightclubApp : public rex::ReXApp {
     };
     std::filesystem::create_directories("logs");
     if (FILE* f = fopen("logs/effective_config.txt", "w")) {
-      fprintf(f, "=== effective cvar values (after OnPreSetup) ===\n");
+      fprintf(f, "=== effective cvar values (sampled in OnPostSetup, after all flags applied) ===\n");
       for (const char* name : kWatched) {
         std::string v = rex::cvar::GetFlagByName(name);
         fprintf(f, "%-46s = %s\n", name, v.empty() ? "<empty/unset>" : v.c_str());
@@ -145,6 +175,7 @@ class MidnightclubApp : public rex::ReXApp {
       fprintf(f, "\n=== env overrides ===\n");
       for (const char* e : {"MCLA_REFRESH_RATE", "MCLA_MAX_FRAME_MS",
                             "MCLA_TIMING_LOG", "MCLA_NO_TIMER_RES", "MCLA_VSYNC", "MCLA_PRESENT_INTERVAL", "MCLA_FPS_CAP",
+                            "MCLA_ALLOW_INVALID_FETCH",
                             "REX_LOG_LEVEL"}) {
         const char* v = getenv(e);
         fprintf(f, "%-46s = %s\n", e, v ? v : "<not set>");
@@ -197,6 +228,7 @@ class MidnightclubApp : public rex::ReXApp {
     // MCLA_NO_TIMER_RES=1 restores the coarse timer for A/B comparison.
     if (const char* e = getenv("MCLA_NO_TIMER_RES"); !(e && *e == '1')) {
       timeBeginPeriod(1);
+      timer_res_raised_ = true;
     }
 
     // Re-apply GPU-plugin cvars now that the xenos plugin is actually loaded.
@@ -333,4 +365,8 @@ class MidnightclubApp : public rex::ReXApp {
     }
 
   }
+
+ private:
+  bool timer_res_raised_ = false;
+
 };

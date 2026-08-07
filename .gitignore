@@ -14,6 +14,33 @@ crash_stack.txt
 stderr.txt
 stdout.txt
 
+# Instrumentation output. timing_* and effective_config are written into logs/
+# and so are already covered, but they get copied out for analysis often enough
+# that it is worth catching them anywhere in the tree.
+timing_*.log
+effective_config*.txt
+
+# Snapshot taken before migrating hand-edits in generated/ to [[midasm_hook]].
+# ~127 MB of duplicated recompiler output — must never be committed. Safe to
+# delete once you are confident the hooks are equivalent.
+.patch_backup/
+
+# IDA artefacts. The database lives outside this repo, but keep these patterns
+# in case anyone drops one in. .i64 in particular is ~100 MB.
+*.i64
+*.id0
+*.id1
+*.id2
+*.nam
+*.til
+*.idb
+
+# Game data — never commit copyrighted assets. You supply your own dump.
+*.xex
+*.rpf
+*.bik
+MCLA_Game_Files/
+
 # IDE & Editor files
 .vs/
 .vscode/*

@@ -15,21 +15,32 @@ address = 0x821BDAB0
 after_instruction = true
 registers = ["r8"]
 
-# 0x821BDB08 is `bne cr6,0x821BDBC8`, where cr6 is ([r3+56] == 0) and [r3+56]
-# is a one-shot "timer was reset" flag.
+# Skip ONLY the fixed-timestep overwrite, nothing else.
 #
-# Returning true (flag clear — every normal frame) jumps past the 30 Hz paths
-# at loc_821BDB90 / loc_821BDB58 / loc_821BDB80, all of which overwrite the
-# measured delta in [r3+8]/[r3+88] with the fixed timestep from [r3+32].
+# This hook used to sit at 0x821BDB08 (the `bne cr6,0x821BDBC8` that Xenia
+# patches) and jump to loc_821BDC34 whenever the "timer was reset" flag at
+# [r3+56] was clear. That bypassed far too much: the block at
+# loc_821BDB10..loc_821BDB58 also advances [r3+20] and [r3+24], the engine's
+# running accumulated-time totals. Measured result — they advanced exactly once
+# and then sat frozen at 0.0333 for the rest of the session.
 #
-# Returning false lets the original branch run, so reset frames still reach
-# loc_821BDBC8 and get a synthetic delta instead of a garbage one. Xenia's
-# patch skips that guard unconditionally; we deliberately keep it.
+# 0x821BDB58 is the start of the fixed-timestep block proper: it compares the
+# measured delta against [r3+32] and overwrites [r3+8]/[r3+88] with the fixed
+# step (loc_821BDB80), or sets the "skip frame" flag at [r3+52]. Jumping from
+# here to loc_821BDC34 skips exactly that and nothing more.
+#
+# What now runs normally again:
+#   - the [r3+56] reset guard at 0x821BDB08 -> loc_821BDBC8 (kept, as before)
+#   - [r3+16] = [r3+20]  (previous-accumulated save)
+#   - [r3+20] += delta, [r3+24] += delta  (the frozen accumulators)
+#
+# Note loc_821BDB90 (taken when [r3+58] or [r3+60] are set) still does its own
+# fixed-step overwrite. That is original behaviour for that state and we have no
+# evidence it is wrong, so it is deliberately left alone.
 [[midasm_hook]]
 name = "MCLAUseRealDelta"
-address = 0x821BDB08
-registers = ["cr6"]
-jump_address_on_true = 0x821BDC34
+address = 0x821BDB58
+jump_address = 0x821BDC34
 
 # 0x82419AA0 is `li r11,2` in sub_824199B0, which builds a PM4 packet — r11 is
 # the present interval in vblanks, shifted into the packet field at 0x82419AB4.

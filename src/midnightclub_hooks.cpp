@@ -86,8 +86,29 @@ uint64_t MaxFrameTicks() {
 // single wrong value here explains every remaining symptom at once.
 //
 // So: sample them and see whether the delta actually tracks real frame time.
-constexpr uint32_t kGuestFrameDelta   = 0x827D7508;  // flt_827D7508
-constexpr uint32_t kGuestFrameRate    = 0x827D750C;  // flt_827D750C
+// The timer object itself lives at 0x827D7500 (r27/r3 in the main loop), so the
+// struct offsets map directly onto absolute addresses. This is confirmed by
+// [r3+8] landing exactly on flt_827D7508, the published frame delta, and
+// [r3+84] on flt_827D7554, which the main loop initialises to 1.0 (timescale).
+constexpr uint32_t kGuestTimerObject  = 0x827D7500;
+constexpr uint32_t kGuestFrameDelta   = 0x827D7508;  // [r3+8]
+constexpr uint32_t kGuestFrameRate    = 0x827D750C;  // [r3+12]
+
+// AUDIT CONCERN. The MCLAUseRealDelta hook jumps straight to loc_821BDC34,
+// which only increments the frame counters at [r3+44]/[r3+48]. That skips the
+// block at loc_821BDB10..loc_821BDB58, which is where [r3+20] and [r3+24] —
+// running accumulated-time totals — are advanced.
+//
+// Xenia's patch skips them too, so this is not a deviation from the known-good
+// reference, but "Xenia does it as well" is not evidence that nothing reads
+// them. If a subsystem uses [r3+20] as its clock, we have frozen that clock.
+// The intro BIK movies are broken in a way that is independent of frame rate,
+// which is exactly what a frozen or garbage time source would look like.
+//
+// Sample them and find out.
+constexpr uint32_t kGuestAccumA       = 0x827D7514;  // [r3+20]
+constexpr uint32_t kGuestAccumB       = 0x827D7518;  // [r3+24]
+constexpr uint32_t kGuestTimeScale    = 0x827D7554;  // [r3+84]
 constexpr uint32_t kGuestAccumTime    = 0x828747B8;  // flt_828747B8
 constexpr uint32_t kGuestFrameCount   = 0x828747B0;  // dword_828747B0
 constexpr uint32_t kGuestSubstepFixed = 0x8201D29C;  // 0.02, the 50 Hz quantum
@@ -132,6 +153,11 @@ void RecordFrameTime() {
     return e && *e == '1';
   }();
   if (!enabled) return;
+
+  // Same reasoning as LimitFrameRate: every static below is non-atomic, so
+  // confine the bookkeeping to one thread rather than racing.
+  static const std::thread::id owner = std::this_thread::get_id();
+  if (std::this_thread::get_id() != owner) return;
 
   // One file per run. Previously this was a fixed "logs/timing.log" opened
   // with "w", so back-to-back runs silently destroyed the earlier capture —
@@ -181,9 +207,12 @@ void RecordFrameTime() {
   if (now - last_report >= 1000000 && log) {
     wrote = true;
     // Measured wall-clock frame time this second, vs what the engine believes.
-    // If engine_dt does not track measured_dt, every consumer of the guest
-    // globals is running at the wrong rate — one root cause, many symptoms.
-    double measured_dt_ms = frames ? 1000.0 / frames : 0.0;
+    // Use the ACTUAL elapsed interval, not an assumed 1000 ms — the report
+    // fires on the first frame at or past the second boundary, so the real
+    // window is typically 1000-1035 ms and assuming 1000 biased measured_dt
+    // low by up to 3%.
+    double window_ms = (now - last_report) / 1000.0;
+    double measured_dt_ms = frames ? window_ms / frames : 0.0;
     float engine_dt = ReadGuestFloat(kGuestFrameDelta);
     float engine_fps = ReadGuestFloat(kGuestFrameRate);
     float accum = ReadGuestFloat(kGuestAccumTime);
@@ -197,33 +226,55 @@ void RecordFrameTime() {
                  measured_dt_ms, engine_dt * 1000.0f, engine_fps, accum, count,
                  (engine_dt > 0.0f) ? (measured_dt_ms / (engine_dt * 1000.0f)) : 0.0);
 
-    // Substep count at 0x822C2434. The loop runs r24+1 times, and the final
-    // pass uses the FULL delta — so simulated time per frame is dt when r24==0
-    // and 2*dt whenever r24 > 0.
+    // Substep count at 0x822C2434. The loop makes r24+1 passes: r24 substeps
+    // of dt/r24 plus one full-dt pass. Measured as a constant 2 at every frame
+    // rate tested, which is the native console behaviour — different consumers
+    // take different passes, so each still sees dt per frame.
+    //
+    // (An earlier version of this line labelled r24 > 0 as "DOUBLE". That was
+    // wrong: summing all passes gives 2*dt by construction, and the value does
+    // not change with frame rate. Kept as a rate-invariance check only.)
     std::fprintf(log,
-                 "           substep r24: last=%d min=%d max=%d avg=%.2f  ->"
-                 " sim_time_per_frame = %s\n",
+                 "           substep r24: last=%d min=%d max=%d avg=%.2f  (%d passes/frame)\n",
                  g_substep_last, g_substep_min == 0x7FFFFFFF ? -999 : g_substep_min,
                  g_substep_max == -0x7FFFFFFF ? -999 : g_substep_max,
                  g_substep_n ? double(g_substep_sum) / g_substep_n : 0.0,
-                 g_substep_max > 0 ? "2x dt  <-- DOUBLE" : "1x dt (correct)");
+                 g_substep_last >= 0 ? g_substep_last + 1 : -1);
     g_substep_min = 0x7FFFFFFF;
     g_substep_max = -0x7FFFFFFF;
     g_substep_sum = 0;
     g_substep_n = 0;
 
-    // GROUND TRUTH: total simulated time advanced during this real second.
-    // 1.00 = correct. 2.00 = the simulation is running at double speed.
+    // Rate-invariance check. Sums the delta actually used across every pass, so
+    // it reads ~2.00x by construction (see above). What matters is that the
+    // value is IDENTICAL at different frame caps — that is what proves time
+    // advancement is frame-rate independent. A number that changes with the cap
+    // would mean a real speed bug.
     double real_elapsed = (now - last_report_for_sim) / 1e6;
     std::fprintf(log,
-                 "           SIM SPEED: advanced %.3f s of game time in %.3f s real"
-                 "  -> %.2fx   (%llu loop iterations)\n",
+                 "           SIM RATE: advanced %.3f s of game time in %.3f s real"
+                 "  -> %.2fx (expect ~2.00 at EVERY cap)   (%llu passes)\n",
                  g_sim_time_sum, real_elapsed,
                  real_elapsed > 0.0 ? g_sim_time_sum / real_elapsed : 0.0,
                  static_cast<unsigned long long>(g_sim_iters));
     g_sim_time_sum = 0.0;
     g_sim_iters = 0;
     last_report_for_sim = now;
+
+    // Do the accumulated-time totals still advance? Our patch bypasses the
+    // block that updates them. If these are frozen, anything using them as a
+    // clock is broken — a prime suspect for the BIK movies.
+    static float prev_accum_a = 0.0f, prev_accum_b = 0.0f;
+    float accum_a = ReadGuestFloat(kGuestAccumA);
+    float accum_b = ReadGuestFloat(kGuestAccumB);
+    std::fprintf(log,
+                 "           ACCUM [r3+20]=%.4f (+%.4f/s)  [r3+24]=%.4f (+%.4f/s)"
+                 "  timescale=%.3f  %s\n",
+                 accum_a, accum_a - prev_accum_a, accum_b, accum_b - prev_accum_b,
+                 ReadGuestFloat(kGuestTimeScale),
+                 (accum_a - prev_accum_a) < 0.001f ? "<-- FROZEN" : "");
+    prev_accum_a = accum_a;
+    prev_accum_b = accum_b;
     frames = 0;
     last_report = now;
     spikes[0] = spikes[1] = spikes[2] = spikes[3] = 0;
@@ -293,6 +344,15 @@ void LimitFrameRate() {
   }();
   if (period_us <= 0.0) return;
 
+  // sub_821BDA90 has two callers: the main loop (sub_822C1FA8) and a
+  // timer-reset path (sub_822611B0), both on the same timer object. Nothing
+  // guarantees they are the same thread, and `next_us` below is plain
+  // non-atomic state — a second thread would both corrupt the schedule and
+  // sleep somewhere it should not. Bind the limiter to the first thread that
+  // reaches it and make every other thread a no-op.
+  static const std::thread::id owner = std::this_thread::get_id();
+  if (std::this_thread::get_id() != owner) return;
+
   static uint64_t next_us = 0;
   auto now_us = [] {
     return static_cast<uint64_t>(
@@ -338,14 +398,28 @@ uint64_t g_substep_sum = 0, g_substep_n = 0;
 double g_sim_time_sum = 0.0;
 uint64_t g_sim_iters = 0;
 
+// These two hooks are instrumentation only. They were running unconditionally,
+// which meant a guest-memory read plus a Runtime::instance() call on every
+// substep iteration (3x per frame) in normal play. Gate them on the same switch
+// as the rest of the instrumentation.
+bool TimingLogEnabled() {
+  static const bool enabled = [] {
+    const char* e = std::getenv("MCLA_TIMING_LOG");
+    return e && *e == '1';
+  }();
+  return enabled;
+}
+
 // 0x822C2478, `lfs f30, 8(r27)` — [r27+8] is the delta for this iteration,
 // just set by sub_821BD910.
 void MCLASubstepDelta(PPCRegister& r27) {
+  if (!TimingLogEnabled()) return;
   g_sim_time_sum += ReadGuestFloat(r27.u32 + 8);
   g_sim_iters++;
 }
 
 void MCLASubstepCount(PPCRegister& r24) {
+  if (!TimingLogEnabled()) return;
   int32_t v = static_cast<int32_t>(r24.s32);
   g_substep_last = v;
   if (v < g_substep_min) g_substep_min = v;
@@ -373,13 +447,15 @@ void MCLAFrameDelta(PPCRegister& r8) {
   }
 }
 
-// 0x821BDB08, before `bne cr6,0x821BDBC8`.
-// True  -> jump to 0x821BDC34, keeping the measured delta.
-// False -> original branch runs, so reset frames still reach loc_821BDBC8 and
-//          get a synthetic delta rather than a garbage one.
-bool MCLAUseRealDelta(PPCCRRegister& cr6) {
-  return cr6.eq;
-}
+// 0x821BDB58 — start of the fixed-timestep block. Unconditional jump to
+// loc_821BDC34, declared in the TOML; this body only exists because codegen
+// emits a call. Nothing to do here.
+//
+// Previously hooked at 0x821BDB08 with a conditional jump, which also bypassed
+// the [r3+20] / [r3+24] accumulated-time updates. They were measured frozen at
+// 0.0333 for an entire session. Moving the hook down to 0x821BDB58 skips only
+// the fixed-step overwrite and lets the accumulators run again.
+void MCLAUseRealDelta() {}
 
 // 0x82419AA0, after `li r11,2`. Present interval in vblanks: 2 -> 1.
 //

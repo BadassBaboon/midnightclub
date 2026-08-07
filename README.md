@@ -29,7 +29,8 @@ Static recompilation converts the original Xbox 360 PowerPC (PPC) bytecode in th
 | Intro `.bik` movies play too fast | Independent of frame rate — the movie player has its own timing path. Skippable. |
 | Frame rate drops to ~22-25 fps in dense city areas | CPU-bound in the recompiled code and the emulation layer. Under investigation. |
 
-See `MCLA_workplan.md` in the parent directory for the full investigation log.
+See [`MCLA_workplan.md`](MCLA_workplan.md) for the full investigation log —
+every measurement, every hypothesis that was disproven, and what is left to do.
 
 ---
 
