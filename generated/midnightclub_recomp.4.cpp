@@ -1,4 +1,6 @@
 #include "midnightclub_init.h"
+#include <chrono>
+#include <thread>
 
 DEFINE_REX_FUNC(sub_821A5CD8) {
 	REX_FUNC_PROLOGUE();
@@ -57259,6 +57261,22 @@ DEFINE_REX_FUNC(sub_821BDA90) {
 	REX_FUNC_PROLOGUE();
 	PPCRegister temp{};
 loc_821BDA90:
+	// --- 60 FPS C++ Frame Limiter ---
+	static uint64_t last_time = 0;
+	uint64_t current_time = std::chrono::duration_cast<std::chrono::microseconds>(
+		std::chrono::high_resolution_clock::now().time_since_epoch()).count();
+	
+	if (last_time != 0) {
+		uint64_t elapsed = current_time - last_time;
+		if (elapsed < 16666) { // 60 FPS = 16.666 ms
+			std::this_thread::sleep_for(std::chrono::microseconds(16666 - elapsed));
+			current_time = std::chrono::duration_cast<std::chrono::microseconds>(
+				std::chrono::high_resolution_clock::now().time_since_epoch()).count();
+		}
+	}
+	last_time = current_time;
+	// --------------------------------
+
 	// mftb r11
 	ctx.r11.u64 = REX_QUERY_TIMEBASE();
 	// rotlwi r10,r11,0
