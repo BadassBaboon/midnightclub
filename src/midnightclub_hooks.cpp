@@ -522,3 +522,26 @@ void MCLAPresentInterval(PPCRegister& r11) {
   }();
   if (force) r11.s64 = 1;
 }
+
+// 0x822A2ED4, inside sub_822A2988 (car turning physics).
+// lfs f0, 12(r20) loads the timestep. We replace the loaded value with the
+// real, time-scaled frame delta to fix the 2x steering speed at 60 FPS.
+void MCLATurnSpeedTimestep(PPCRegister& f0) {
+  float dt = ReadGuestFloat(kGuestFrameDelta);
+  if (dt > 0.0f) {
+    f0.f64 = static_cast<double>(dt);
+  }
+}
+
+
+// 0x823203D4, in sub_82320298 (likely mcPlayerCamera::Update).
+// Applies the 60 FPS exponential decay formula to the camera boom interpolation 
+// constant before it is passed to the generic matrix Lerp function. This correctly 
+// scales the chase camera motion without poisoning cockpit animations or HUD logic.
+void MCLACameraBoomSmoothing(PPCRegister& f1) {
+  float dt = ReadGuestFloat(kGuestFrameDelta);
+  double k = f1.f64;
+  if (k > 0.0 && k < 1.0) {
+    f1.f64 = 1.0 - std::pow(1.0 - k, dt * 30.0);
+  }
+}

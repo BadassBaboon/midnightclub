@@ -102,6 +102,28 @@ name = "MCLASubstepDelta"
 address = 0x822C2478
 registers = ["r27"]
 
+# 0x822A2ED4: lfs f0, 12(r20)
+# This loads the timestep used by the steering physics update. It is a fixed
+# constant in the original game (0.0333333), causing the car to steer twice
+# as fast at 60 FPS since the substep loop runs twice as often.
+[[midasm_hook]]
+name = "MCLATurnSpeedTimestep"
+address = 0x822A2ED4
+after_instruction = true
+registers = ["f0"]
+
+
+# 0x823203D4: fmr f1, f27
+# This is in sub_82320298 (likely mcPlayerCamera::Update). f1 is the interpolation
+# constant passed to sub_8231D3A8 (generic Lerp/Slerp). Applying the exponential
+# decay fix here scales the camera boom speed correctly for 60 FPS without poisoning
+# the generic math functions (which broke cockpit and HUD).
+[[midasm_hook]]
+name = "MCLACameraBoomSmoothing"
+address = 0x823203D4
+after_instruction = true
+registers = ["f1"]
+
 [functions]
 0x822B88C8 = {}
 0x824B0DE8 = {}
