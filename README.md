@@ -25,9 +25,10 @@ Static recompilation converts the original Xbox 360 PowerPC (PPC) bytecode in th
 
 | Issue | Status |
 |---|---|
-| Camera and traffic *feel* faster above 30 fps | Simulation speed is correct (measured); specific subsystems still smooth per-frame rather than per-second. Use `MCLA_FPS_CAP=30` for now. |
+| **Broken car reflections & object dithering** | Visual artifacts on car body reflections and dithered alpha textures (e.g. tree foliage) are due to current `rexglue` `xenos` rendering plugin limitations. Upstream [xenia-edge](https://github.com/has207/xenia-edge) has specialized rendering fixes that resolve these issues. Fixing this requires harvesting and porting those D3D12/xenos renderer improvements into `rexglue`, or waiting for a `rexglue` SDK update. |
+| Camera and traffic *feel* faster above 30 fps | Simulation speed is rate-invariant (measured); chase camera boom is fixed (`0x823203D4`), but some secondary subsystems still interpolate per-frame. Vehicle handling & SUV slip damping were preserved as a deliberate compromise. `MCLA_FPS_CAP=30` remains recommended for the most console-faithful experience. |
 | Intro `.bik` movies play too fast | Independent of frame rate — the movie player has its own timing path. Skippable. |
-| Frame rate drops to ~22-25 fps in dense city areas | CPU-bound in the recompiled code and the emulation layer. Under investigation. |
+| Frame rate drops in dense city areas | Mitigated via expanded GPU texture cache (`soft=768`, `hard=1024`), which halved severe >50ms frame spikes. Remaining drops are CPU-bound in the recompiled code. |
 
 See [`MCLA_workplan.md`](MCLA_workplan.md) for the full investigation log —
 every measurement, every hypothesis that was disproven, and what is left to do.
@@ -125,6 +126,11 @@ Leave `MCLA_FPS_CAP` unset to run uncapped. Not recommended: the game reaches
 |---|---|---|
 | `MCLA_FPS_CAP` | unset (uncapped) | Frame rate limit. `30` recommended. |
 | `REX_LOG_LEVEL` | `trace` on non-Release builds | **Set to `warn`.** The default costs ~7,500 log lines/sec and ~1.4 MB/s of synchronous disk I/O during gameplay. |
+| `MCLA_TEX_SOFT` | `768` | GPU texture cache soft memory limit (MB). Expanded to prevent cache thrashing in dense city areas. |
+| `MCLA_TEX_HARD` | `1024` | GPU texture cache hard memory limit (MB). |
+| `MCLA_TEX_RTT` | `0` | GPU texture cache limit for render-to-texture targets (MB). |
+| `MCLA_TILED_SHARED` | `false` | Disables tiled shared memory for lower emulation overhead on modern GPUs. |
+| `MCLA_RESOLUTION_SCALE` | `1` | Internal 3D resolution multiplier. **Keep at `1`** — setting to `2` corrupts projection frustum culling and grid spawn transforms. |
 | `MCLA_TIMING_LOG` | off | `1` writes frame-time stats and a 1 ms histogram to `logs/timing_<date>_<time>_cap<N>.log`. |
 | `MCLA_MAX_FRAME_MS` | `125` | Hitch guard: caps the delta a single frame can advance. Clamped to `[16, 1000]`; cannot be disabled. |
 | `MCLA_VSYNC` | `false` | `true` restores vsync. Reintroduces frame-time quantization. |
@@ -177,6 +183,8 @@ The rexGlu SDK translates each PPC function in the XEX into a C++ function. Func
 | Frame times quantized to a 15.625 ms grid | `timeBeginPeriod(1)` plus `vsync=false`. The grid was Windows' default timer granularity, not the display and not the guest vblank rate. Both changes are required; either alone leaves the grid intact. ~30% throughput gain. |
 | Nothing throttled presentation once vsync was off | Time-based frame limiter (`MCLA_FPS_CAP`) with a wall-clock deadline. Deliberately not vblank-based, which would reintroduce quantization. |
 | Physics exploding after a streaming stall | `MCLAFrameDelta` hook at `0x821BDAB0` clamps the per-frame delta (`MCLA_MAX_FRAME_MS`, default 125 ms). |
+| Chase camera jitter at 60 FPS | `MCLACameraBoomSmoothing` hook at `0x823203D4` applies rate-invariant exponential decay `1 - pow(1 - k, dt * 30)` to chase camera boom interpolation constant `f1`. |
+| Texture cache thrashing causing city slowdowns | Expanded texture cache limits (`soft=768`, `hard=1024`) in `ApplyGpuFlags`, halving severe frame drops (>50ms) in dense city areas. |
 | Entire GPU config silently ignored | Cvars in `rex/graphics/flags.h` live in the xenos plugin DLL, which loads *after* `OnPreSetup` returns. They must be set from `OnPostSetup`. `SetFlagByName` returns `false` in that case, so typos and mistimed calls look identical to success — the app now logs every attempt. |
 
 ### Debugging Aids
