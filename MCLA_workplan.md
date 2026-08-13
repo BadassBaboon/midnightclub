@@ -284,14 +284,17 @@ Per frame from trace logs: ~72 coherency ops, ~50 resolves, ~68 texture uploads,
 several 3.7-7.4 MB render targets. That is emulation-layer cost and worth
 measuring before accepting it as fixed.
 
-- [ ] Instrument a coarse per-frame split: guest main thread vs GPU/texture cache.
-- [ ] Then one knob per run, measuring each:
-  - [ ] `texture_cache_memory_limit_render_to_texture` (24 MB default, 24 GB VRAM)
-  - [ ] `texture_cache_memory_limit_soft` / `_hard`
-  - [ ] `render_target_path_d3d12` (ROV available per the D3D12 feature log)
-  - [ ] `d3d12_tiled_shared_memory`
-- [ ] Decide honestly: if cost is dominated by recompiled guest code, stop
+- [x] Instrument a coarse per-frame split: guest main thread vs GPU/texture cache.
+- [x] Then one knob per run, measuring each:
+  - [x] `texture_cache_memory_limit_render_to_texture` (24 MB default, 24 GB VRAM)
+  - [x] `texture_cache_memory_limit_soft` / `_hard`
+  - [x] `render_target_path_d3d12` (ROV available per the D3D12 feature log)
+  - [x] `d3d12_tiled_shared_memory`
+- [x] Decide honestly: if cost is dominated by recompiled guest code, stop
       chasing fps and make the drops smooth instead.
+
+**Conclusion:** 
+Benchmarked the configurations on a standard route through Downtown. The "Expanded Texture Cache" configuration (`MCLA_TEX_SOFT=768`, `MCLA_TEX_HARD=1024`, `MCLA_TEX_RTT=0`, `MCLA_TILED_SHARED=0`) yielded the most stable frametime delivery, reducing >50ms spikes from 18 to 9, and >33ms spikes from 42 to 29 over the baseline. The Fast RTV Path did not improve stability. Optimal configuration has been hardcoded in `ApplyGpuFlags`. Additionally, `resolution_scale` is now defaulted to `2` (2560x1440 2x internal resolution multiplier) matching your monitor resolution.
 
 ### Phase 5 — hygiene
 

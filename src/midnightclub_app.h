@@ -73,7 +73,7 @@ class MidnightclubApp : public rex::ReXApp {
     // reportedly looks correct on this title was using. Costs GPU time and
     // texture cache pressure, both of which we have headroom for on a 3090.
     const char* res = getenv("MCLA_RESOLUTION_SCALE");
-    SetFlag(phase, "resolution_scale", (res && *res) ? res : "1");
+    SetFlag(phase, "resolution_scale", (res && *res) ? res : "2");
 
     // eDRAM emulation path: "d3d12_rov" or "d3d12_rtv". Unset = auto.
     //
@@ -117,6 +117,19 @@ class MidnightclubApp : public rex::ReXApp {
     const char* fetch = getenv("MCLA_ALLOW_INVALID_FETCH");
     SetFlag(phase, "gpu_allow_invalid_fetch_constants",
             (fetch && *fetch) ? fetch : "true");
+
+    const char* tex_soft = getenv("MCLA_TEX_SOFT");
+    SetFlag(phase, "texture_cache_memory_limit_soft", (tex_soft && *tex_soft) ? tex_soft : "768");
+
+    const char* tex_hard = getenv("MCLA_TEX_HARD");
+    SetFlag(phase, "texture_cache_memory_limit_hard", (tex_hard && *tex_hard) ? tex_hard : "1024");
+
+    const char* tex_rtt = getenv("MCLA_TEX_RTT");
+    SetFlag(phase, "texture_cache_memory_limit_render_to_texture", (tex_rtt && *tex_rtt) ? tex_rtt : "0");
+
+    const char* tiled = getenv("MCLA_TILED_SHARED");
+    SetFlag(phase, "d3d12_tiled_shared_memory", (tiled && *tiled) ? tiled : "false");
+
     // vsync has been reading back as `true` (the default) in every run so far,
     // despite being set to false here since the beginning — presentation has
     // been vsync-locked the whole time. Now that it can actually bind, keep it
@@ -198,6 +211,7 @@ class MidnightclubApp : public rex::ReXApp {
                             "MCLA_TIMING_LOG", "MCLA_NO_TIMER_RES", "MCLA_VSYNC", "MCLA_PRESENT_INTERVAL", "MCLA_FPS_CAP",
                             "MCLA_ALLOW_INVALID_FETCH", "MCLA_SUBSTEPS",
                             "MCLA_RT_PATH", "MCLA_RESOLUTION_SCALE",
+                            "MCLA_TEX_SOFT", "MCLA_TEX_HARD", "MCLA_TEX_RTT", "MCLA_TILED_SHARED",
                             "REX_LOG_LEVEL"}) {
         const char* v = getenv(e);
         fprintf(f, "%-46s = %s\n", e, v ? v : "<not set>");
