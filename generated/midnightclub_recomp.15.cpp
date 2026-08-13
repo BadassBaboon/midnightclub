@@ -51549,6 +51549,8 @@ loc_8230C844:
 	return;
 }
 
+extern void MCLADisableImposterShadows(PPCRegister& r11);
+
 DEFINE_REX_FUNC(sub_8230C860) {
 	REX_FUNC_PROLOGUE();
 	PPCRegister temp{};
@@ -51568,6 +51570,7 @@ DEFINE_REX_FUNC(sub_8230C860) {
 	ctx.r25.u64 = ctx.r4.u64;
 	// lwz r11,196(r31)
 	ctx.r11.u64 = REX_LOAD_U32(ctx.r31.u32 + 196);
+	MCLADisableImposterShadows(ctx.r11);
 	// cmplwi cr6,r11,0
 	ctx.cr6.compare<uint32_t>(ctx.r11.u32, 0, ctx.xer);
 	// beq cr6,0x8230ca3c

@@ -19539,6 +19539,8 @@ loc_822E4A9C:
 	return;
 }
 
+extern void MCLADisableMSAA(PPCRegister& r11);
+
 DEFINE_REX_FUNC(sub_822E4AB0) {
 	REX_FUNC_PROLOGUE();
 	PPCRegister temp{};
@@ -19666,6 +19668,7 @@ loc_822E4B78:
 	ctx.r10.s64 = ctx.r11.s64 + -7944;
 	// lwz r11,4(r10)
 	ctx.r11.u64 = REX_LOAD_U32(ctx.r10.u32 + 4);
+	MCLADisableMSAA(ctx.r11);
 	// cmplwi cr6,r11,0
 	ctx.cr6.compare<uint32_t>(ctx.r11.u32, 0, ctx.xer);
 	// bne cr6,0x822e4ba0

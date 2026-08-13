@@ -613,3 +613,39 @@ void MCLAAmbientDensityTuning(PPCRegister& r3) {
   }
 }
 
+// Disable Motion Blur patch
+bool IsMotionBlurDisabled() {
+  static const bool disabled = [] {
+    const char* e = std::getenv("MCLA_DISABLE_MOTION_BLUR");
+    return e && *e == '1';
+  }();
+  return disabled;
+}
+
+void MCLADisableMotionBlur1(PPCRegister& r3) {
+  if (IsMotionBlurDisabled()) r3.u64 = 0;
+}
+
+void MCLADisableMotionBlur2(PPCRegister& r3) {
+  if (IsMotionBlurDisabled()) r3.u64 = 0;
+}
+
+// Disable Imposter Shadows patch
+// 0x8230C874: lwz r11, 0xC4(r31)
+void MCLADisableImposterShadows(PPCRegister& r11) {
+  static const bool disabled = [] {
+    const char* e = std::getenv("MCLA_DISABLE_IMPOSTER_SHADOWS");
+    return e && *e == '1';
+  }();
+  if (disabled) r11.u64 = 0;
+}
+
+// Disable MSAA patch
+// 0x822E4B80: lwz r11, (dword_8287E0FC - 0x8287E0F8)(r10)
+void MCLADisableMSAA(PPCRegister& r11) {
+  static const bool disabled = [] {
+    const char* e = std::getenv("MCLA_DISABLE_MSAA");
+    return e && *e == '1';
+  }();
+  if (disabled) r11.u64 = 1;
+}

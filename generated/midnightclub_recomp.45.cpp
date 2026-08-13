@@ -14407,6 +14407,10 @@ DEFINE_REX_FUNC(sub_8260C710) {
 	return;
 }
 
+extern void MCLADisableMotionBlur1(PPCRegister& r3);
+
+extern void MCLADisableMotionBlur2(PPCRegister& r3);
+
 DEFINE_REX_FUNC(sub_8260C8E0) {
 	REX_FUNC_PROLOGUE();
 	uint32_t ea{};
@@ -15490,6 +15494,7 @@ loc_8260C90C:
 	// bl 0x8218a568
 	ctx.lr = 0x8260D0BC;
 	sub_8218A568(ctx, base);
+	MCLADisableMotionBlur1(ctx.r3);
 	// stw r3,3400(r31)
 	REX_STORE_U32(ctx.r31.u32 + 3400, ctx.r3.u32);
 	// lis r6,-32247
@@ -15505,6 +15510,7 @@ loc_8260C90C:
 	// bl 0x8218a568
 	ctx.lr = 0x8260D0D8;
 	sub_8218A568(ctx, base);
+	MCLADisableMotionBlur2(ctx.r3);
 	// stw r3,3404(r31)
 	REX_STORE_U32(ctx.r31.u32 + 3404, ctx.r3.u32);
 	// lwz r3,128(r31)

@@ -137,6 +137,31 @@ name = "MCLAAmbientDensityTuning"
 address = 0x826F4E3C
 registers = ["r31"]
 
+# Phase 6: Graphics Patches
+[[midasm_hook]]
+name = "MCLADisableMotionBlur1"
+address = 0x8260D0B8
+after_instruction = true
+registers = ["r3"]
+
+[[midasm_hook]]
+name = "MCLADisableMotionBlur2"
+address = 0x8260D0D4
+after_instruction = true
+registers = ["r3"]
+
+[[midasm_hook]]
+name = "MCLADisableImposterShadows"
+address = 0x8230C874
+after_instruction = true
+registers = ["r11"]
+
+[[midasm_hook]]
+name = "MCLADisableMSAA"
+address = 0x822E4B80
+after_instruction = true
+registers = ["r11"]
+
 [functions]
 # RaceGrid_SetPosition entry point (0x82264760) and RaceGrid_GetPosition entry point
 # (0x82264770): script native commands registered by sub_82264780. The script VM calls
