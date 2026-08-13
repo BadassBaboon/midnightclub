@@ -19,6 +19,14 @@ stdout.txt
 # that it is worth catching them anywhere in the tree.
 timing_*.log
 effective_config*.txt
+*.json
+!CMakePresets.json
+!launch.vs.json
+!.vscode/launch.json
+!.vscode/tasks.json
+*.txt
+!README.md
+
 
 # Snapshot taken before migrating hand-edits in generated/ to [[midasm_hook]].
 # ~127 MB of duplicated recompiler output — must never be committed. Safe to
