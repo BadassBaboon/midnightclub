@@ -146,7 +146,7 @@ class MidnightclubApp : public rex::ReXApp {
     SetFlag(phase, "texture_cache_memory_limit_hard", (tex_hard && *tex_hard) ? tex_hard : "1024");
 
     const char* tex_rtt = getenv("MCLA_TEX_RTT");
-    SetFlag(phase, "texture_cache_memory_limit_render_to_texture", (tex_rtt && *tex_rtt) ? tex_rtt : "0");
+    SetFlag(phase, "texture_cache_memory_limit_render_to_texture", (tex_rtt && *tex_rtt) ? tex_rtt : "24");
 
     const char* tiled = getenv("MCLA_TILED_SHARED");
     SetFlag(phase, "d3d12_tiled_shared_memory", (tiled && *tiled) ? tiled : "false");
