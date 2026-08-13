@@ -125,6 +125,28 @@ after_instruction = true
 registers = ["f1"]
 
 [functions]
+# RaceGrid_SetPosition entry point (0x82264760) and RaceGrid_GetPosition entry point
+# (0x82264770): script native commands registered by sub_82264780. The script VM calls
+# these at race start to place cars on the starting grid. Without them, cars are never
+# positioned, manifesting as tilted/floating spawn and a broken showcase camera.
+# Confirmed via stubs.txt: both were hit 30+ times per race start from LR=0x82555CCC
+# (inside the script VM dispatcher sub_82554E20).
+0x82264760 = { is_function_start = true }
+0x82264770 = { is_function_start = true }
+
+# 0x82554080: script VM native command dispatch helper. Called by the script interpreter
+# when invoking native commands including the race-grid setters above. Also missing from
+# the function table (confirmed stubs.txt: 63 hits from LR=0x82555CCC).
+0x82554080 = { is_function_start = true }
+
+# 0x82262320: small leaf — reads a game-state flag bit into a script output slot.
+# 0x822C9FE8: small buffer/queue pusher used during race scripts.
+# Both called once or twice per session from the script VM (confirmed stubs.txt 2026-08-13).
+0x82262320 = { is_function_start = true }
+0x822C9FE8 = { is_function_start = true }
+
+# The stubs below were added during Phase 0 to handle indirect calls to functions not
+# in the original function hint list. {} means a no-op stub, intentional.
 0x822B88C8 = {}
 0x824B0DE8 = {}
 0x8220C018 = {}

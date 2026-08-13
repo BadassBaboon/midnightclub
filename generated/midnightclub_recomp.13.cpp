@@ -29052,6 +29052,69 @@ DEFINE_REX_FUNC(sub_822C9FD8) {
 	return;
 }
 
+DEFINE_REX_FUNC(sub_822C9FE8) {
+	REX_FUNC_PROLOGUE();
+	PPCRegister temp{};
+	// mr r11,r3
+	ctx.r11.u64 = ctx.r3.u64;
+	// lwz r10,12(r11)
+	ctx.r10.u64 = REX_LOAD_U32(ctx.r11.u32 + 12);
+	// lwz r9,8(r11)
+	ctx.r9.u64 = REX_LOAD_U32(ctx.r11.u32 + 8);
+	// addi r8,r10,4
+	ctx.r8.s64 = ctx.r10.s64 + 4;
+	// rlwinm r7,r8,2,0,29
+	ctx.r7.u64 = __builtin_rotateleft64(ctx.r8.u32 | (ctx.r8.u64 << 32), 2) & 0xFFFFFFFC;
+	// lwz r6,4(r9)
+	ctx.r6.u64 = REX_LOAD_U32(ctx.r9.u32 + 4);
+	// lwz r3,0(r9)
+	ctx.r3.u64 = REX_LOAD_U32(ctx.r9.u32 + 0);
+	// stwx r6,r7,r11
+	REX_STORE_U32(ctx.r7.u32 + ctx.r11.u32, ctx.r6.u32);
+	// lfs f0,8(r6)
+	ctx.fpscr.disableFlushMode();
+	temp.u32 = REX_LOAD_U32(ctx.r6.u32 + 8);
+	ctx.f0.f64 = double(temp.f32);
+	// lwz r10,12(r11)
+	ctx.r10.u64 = REX_LOAD_U32(ctx.r11.u32 + 12);
+	// addi r5,r10,2
+	ctx.r5.s64 = ctx.r10.s64 + 2;
+	// rlwinm r10,r5,4,0,27
+	ctx.r10.u64 = __builtin_rotateleft64(ctx.r5.u32 | (ctx.r5.u64 << 32), 4) & 0xFFFFFFF0;
+	// lfs f13,4(r6)
+	temp.u32 = REX_LOAD_U32(ctx.r6.u32 + 4);
+	ctx.f13.f64 = double(temp.f32);
+	// lfs f12,0(r6)
+	temp.u32 = REX_LOAD_U32(ctx.r6.u32 + 0);
+	ctx.f12.f64 = double(temp.f32);
+	// add r10,r10,r11
+	ctx.r10.u64 = ctx.r10.u64 + ctx.r11.u64;
+	// stfs f12,0(r10)
+	temp.f32 = float(ctx.f12.f64);
+	REX_STORE_U32(ctx.r10.u32 + 0, temp.u32);
+	// stfs f13,4(r10)
+	temp.f32 = float(ctx.f13.f64);
+	REX_STORE_U32(ctx.r10.u32 + 4, temp.u32);
+	// stfs f0,8(r10)
+	temp.f32 = float(ctx.f0.f64);
+	REX_STORE_U32(ctx.r10.u32 + 8, temp.u32);
+	// lwz r10,12(r11)
+	ctx.r10.u64 = REX_LOAD_U32(ctx.r11.u32 + 12);
+	// addi r4,r10,1
+	ctx.r4.s64 = ctx.r10.s64 + 1;
+	// addi r10,r10,2
+	ctx.r10.s64 = ctx.r10.s64 + 2;
+	// stw r4,12(r11)
+	REX_STORE_U32(ctx.r11.u32 + 12, ctx.r4.u32);
+	// rlwinm r10,r10,4,0,27
+	ctx.r10.u64 = __builtin_rotateleft64(ctx.r10.u32 | (ctx.r10.u64 << 32), 4) & 0xFFFFFFF0;
+	// add r4,r10,r11
+	ctx.r4.u64 = ctx.r10.u64 + ctx.r11.u64;
+	// b 0x823889b0
+	sub_823889B0(ctx, base);
+	return;
+}
+
 DEFINE_REX_FUNC(sub_822CA050) {
 	REX_FUNC_PROLOGUE();
 	// lwz r11,8(r3)
