@@ -68,12 +68,33 @@ class MidnightclubApp : public rex::ReXApp {
   // Window/display cvars (rex/ui/flags.h) live in rexruntime and DO bind from
   // OnPreSetup, which is why those were the only settings that ever worked.
   void ApplyGpuFlags(const char* phase) {
-    // Internal render resolution multiplier. The guest renders 1280x720, so 2
-    // gives 2560x1440 render targets — which is what the Xenia Edge setup that
-    // reportedly looks correct on this title was using. Costs GPU time and
-    // texture cache pressure, both of which we have headroom for on a 3090.
+    // Internal render resolution multiplier. The guest renders 1280x720 internally,
+    // and scale=2 would give 2560x1440 eDRAM-emulated render targets before
+    // upscaling to the window — which is supersampling, NOT the same as rendering
+    // natively at the window resolution.
+    //
+    // CONFIRMED BROKEN at scale=2 (2026-08-13):
+    //   - Race-start showcase cameras pick wrong/random world positions at higher
+    //     altitude. Sub_8231D3A8's frustum culling uses flt_828608F0/F4/F8 (view
+    //     frustum plane normals derived from the projection matrix). A 2x larger
+    //     eDRAM surface changes the projection aspect fed into those normals,
+    //     causing the in-frustum threshold check (dot > 0.7) to produce wrong
+    //     results — the showcase picks opponents that are behind the camera.
+    //   - Cars spawn tilted 45° floating above the grid. The grid spawner
+    //     (sub_82264590 / RaceGrid_SetPosition) reads a world transform that
+    //     rexglue apparently derives partly from the same render-target dimensions.
+    //     With scale=2 those transforms contain garbage rotation.
+    //
+    // The window is already set to 2560x1440 by the display cvars below.
+    // At scale=1 the emulator stretches the 1280x720 guest framebuffer to fill
+    // the 2560x1440 window using its own bilinear upscaler — exactly the same
+    // visual path that was used in every working Xenia build.
+    //
+    // If a future rexglue version fixes the projection-matrix bleed-through, or
+    // if sub_8231D3A8 can be patched to use a fixed aspect, revisit this.
+    // Until then: leave at 1 and do NOT change without testing race starts.
     const char* res = getenv("MCLA_RESOLUTION_SCALE");
-    SetFlag(phase, "resolution_scale", (res && *res) ? res : "2");
+    SetFlag(phase, "resolution_scale", (res && *res) ? res : "1");
 
     // eDRAM emulation path: "d3d12_rov" or "d3d12_rtv". Unset = auto.
     //

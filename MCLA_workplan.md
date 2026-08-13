@@ -294,7 +294,7 @@ measuring before accepting it as fixed.
       chasing fps and make the drops smooth instead.
 
 **Conclusion:** 
-Benchmarked the configurations on a standard route through Downtown. The "Expanded Texture Cache" configuration (`MCLA_TEX_SOFT=768`, `MCLA_TEX_HARD=1024`, `MCLA_TEX_RTT=0`, `MCLA_TILED_SHARED=0`) yielded the most stable frametime delivery, reducing >50ms spikes from 18 to 9, and >33ms spikes from 42 to 29 over the baseline. The Fast RTV Path did not improve stability. Optimal configuration has been hardcoded in `ApplyGpuFlags`. Additionally, `resolution_scale` is now defaulted to `2` (2560x1440 2x internal resolution multiplier) matching your monitor resolution.
+Benchmarked the configurations on a standard route through Downtown. The "Expanded Texture Cache" configuration (`MCLA_TEX_SOFT=768`, `MCLA_TEX_HARD=1024`, `MCLA_TEX_RTT=0`, `MCLA_TILED_SHARED=0`) yielded the most stable frametime delivery, reducing >50ms spikes from 18 to 9, and >33ms spikes from 42 to 29 over the baseline. The Fast RTV Path did not improve stability. Optimal configuration has been hardcoded in `ApplyGpuFlags`. REVERTED: `resolution_scale=2` was initially added but immediately confirmed broken — it corrupts the projection matrix normals used by the race-start showcase camera frustum culling (`sub_8231D3A8`, `flt_828608F0/F4/F8`), causing cameras to pick wrong world positions at higher altitude, and corrupts spawn grid transforms causing cars to spawn tilted 45° in the air. `resolution_scale` is locked at `1` (the emulator upscales the 720p guest framebuffer to the 1440p window natively). Do not change without testing race starts.
 
 ### Phase 5 â€” hygiene
 
