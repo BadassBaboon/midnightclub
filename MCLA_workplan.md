@@ -84,7 +84,7 @@ timer granularity**. Not the display, not the guest vblank rate — sweeping
       gives `2*dt` by construction. The console ran the same loop. What matters
       is that the value does not change with frame rate.)
 
-Four hypotheses were raised and killed by measurement along the way. Recording
+Seven hypotheses were raised and killed by measurement/testing along the way. Recording
 them so they are not revisited:
 
 | hypothesis | how it died |
@@ -93,6 +93,9 @@ them so they are not revisited:
 | Wrong global frame delta | `flt_827D7508` ratio is 1.00 at both 30 and 60 fps |
 | Substep loop double-counts | `r24 == 2` constantly at *both* rates |
 | Per-frame input integration | Steering effectiveness and cornering radius are unchanged at 60 |
+| Generic matrix lerp (`sub_8231D3A8`) for camera smoothing | Poisoned shared lerp calls; broke cockpit view, wheel animation, speedometer & HUD. Relocated to caller `0x823203D4`. |
+| Wheel slip timestep scaling at `0x822A2ED4` | `flt_827D750C` is dynamically `1/dt`; scaling by `dt` reduced multiplier by ~3600x, destroying slip damping on heavy vehicles (SUVs/trucks). Reverted. |
+| Global `flt_827D750C` loads in suspension (`0x8256xxxx`) | `flt_827D750C` represents `1/dt` for derivative calculation `(new - old) * (1/dt)`; modifying it destabilizes Euler integration. |
 
 ### Tooling — IDA database ✔
 
@@ -101,7 +104,7 @@ them so they are not revisited:
       full `.text` and function table.
 - [x] `E:\MCLA\IDA\apply_rexglue_functions.py` — 30,029 function entries from
       `generated/midnightclub_init.cpp` so IDA and the recomp agree on
-      boundaries.
+      boundaries. Re-run after IDA database resets.
 - [x] XbSymbolDatabase ruled out (targets original Xbox XBE, not 360 XEX).
 - [x] `mc4_xenon_final.pdb` unobtainable. Not a blocker.
 
@@ -118,6 +121,8 @@ them so they are not revisited:
 | `f1` arg to `sub_821BDA90` is a **forced-delta override**; main loop passes -1.0 = "use measured" | `flt_82003770` = -1.0 |
 | Main frame function is **`sub_822C1FA8`**; substep loop at `loc_822C2448` runs `r24+1` passes | `r24` constant 2 |
 | `sub_821BD910(r3, enable, count)` sets `[r3+8] = dt/count`, or restores full `dt` when `enable==0` | Read from disasm |
+| `0x823203D4` in `sub_82320298` is the specific chase camera boom interpolation site | `sub_8231D3A8` is shared by cockpit/HUD and must NOT be hooked |
+| `flt_827D750C` is dynamically updated to `1/dt` (60.0 at 60 FPS) | `(new - old) * flt_827D750C` is a rate-invariant velocity calculation |
 | GPU cvars live in the xenos plugin DLL and **cannot bind from `OnPreSetup`** | All `FAIL pre` / `ok post` |
 | `mount_cache` is not a registered cvar — RPF RAM caching has never been on | Absent from headers and DLL |
 | `clear_memory_page_state=false` breaks minimap coherency | Reproduced and reverted |
