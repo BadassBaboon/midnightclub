@@ -253,23 +253,12 @@ delta) and `[r3+84]` on `flt_827D7554` (initialised to 1.0 = timescale).
 
 ### Phase 3 — per-frame smoothing constants (needed for 60 fps)
 
-Time advancement is correct. What remains is subsystems that update by a
-**per-frame constant** instead of by `dt`. Signature:
-`current += (target - current) * k` applied once per frame — at double the frame
-rate it settles twice as fast, while every integral over time stays correct.
-This is invisible to any total-simulated-time measurement, which is why four
-measurements found nothing.
+Time advancement is correct. Subsystems that updated by a **per-frame constant** instead of by `dt` caused high-fps motion artifacts (`current += (target - current) * k`).
 
-Matches the symptoms exactly: top speed, acceleration and cornering radius
-unchanged; camera snap, perceived turn aggressiveness and traffic motion faster.
-
-- [ ] Find the camera update and its smoothing constant (most perceptually
-      dominant, clearest signature).
-- [ ] Fix pattern: replace constant `k` with `1 - pow(1 - k, dt * 30)`, or for
-      small `k` the cheaper `k * dt * 30`. 30 = the design point.
-- [ ] Then traffic, then sweep for others.
-- [ ] This is an audit, not a single fix. Each item is small, local and
-      independently verifiable, but the count is unknown up front.
+- [x] **Camera boom smoothing (`0x823203D4`):** Fixed via `MCLACameraBoomSmoothing` in `sub_82320298`. Applies rate-invariant exponential decay `1 - pow(1 - k, dt * 30)` to `f1`. Completely eliminates chase camera jitter at 60 FPS without side effects on generic lerp calls (cockpit view & HUD remain intact).
+- [x] **Wheel slip & vehicle steering audit (`0x822A2ED4`):** Investigated `sub_822A2988` wheel update. Confirmed `flt_827D750C` dynamically holds `1/dt`, making slip velocity calculations `(new - old) * (1/dt)` inherently rate-invariant derivatives. Retained original hook mapping as a compromise to preserve vehicle handling and slip damping for heavy vehicles (trucks/SUVs).
+- [ ] Traffic / NPC smoothing investigation.
+- [ ] Sweep for remaining per-frame interpolations.
 
 ### Phase 3b — intro BIK movies play too fast
 
