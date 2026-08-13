@@ -524,13 +524,23 @@ void MCLAPresentInterval(PPCRegister& r11) {
 }
 
 // 0x822A2ED4, inside sub_822A2988 (car turning physics).
-// lfs f0, 12(r20) loads the timestep. We replace the loaded value with the
-// real, time-scaled frame delta to fix the 2x steering speed at 60 FPS.
-void MCLATurnSpeedTimestep(PPCRegister& f0) {
-  float dt = ReadGuestFloat(kGuestFrameDelta);
-  if (dt > 0.0f) {
-    f0.f64 = static_cast<double>(dt);
-  }
+// lfs f0, (flt_827D750C)(r20) loads flt_827D750C, which is dynamically
+// maintained as 1/dt (the frame rate in fps, e.g. 60.0 at 60 FPS).
+// The immediately following `fmuls f26, f2, f0` computes:
+//   slip_velocity = delta_angle * (1/dt) = delta_angle / dt
+// which is a rate-invariant velocity derivative — already correct at all fps.
+//
+// REVERTED (2026-08-12): An earlier version replaced f0 with dt, making the
+// expression delta_angle * dt instead of delta_angle / dt — wrong by a factor
+// of dt^2. On race-start frames where dt is large (first frame after loading),
+// this produced orientation errors on the order of 10000x, causing cars to
+// spawn tilted ~45° in mid-air. The workplan recorded this as "reverted" but
+// the hook body was never cleared. Fixed now.
+//
+// The hook declaration in the TOML is kept for documentation. The body is a
+// deliberate no-op. DO NOT add a body here without re-auditing the fmuls site.
+void MCLATurnSpeedTimestep(PPCRegister& /*f0*/) {
+  // No-op. See comment above.
 }
 
 

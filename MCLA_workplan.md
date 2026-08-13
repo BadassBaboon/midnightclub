@@ -261,7 +261,7 @@ delta) and `[r3+84]` on `flt_827D7554` (initialised to 1.0 = timescale).
 Time advancement is correct. Subsystems that updated by a **per-frame constant** instead of by `dt` caused high-fps motion artifacts (`current += (target - current) * k`).
 
 - [x] **Camera boom smoothing (`0x823203D4`):** Fixed via `MCLACameraBoomSmoothing` in `sub_82320298`. Applies rate-invariant exponential decay `1 - pow(1 - k, dt * 30)` to `f1`. Completely eliminates chase camera jitter at 60 FPS without side effects on generic lerp calls (cockpit view & HUD remain intact).
-- [x] **Wheel slip & vehicle steering audit (`0x822A2ED4`):** Investigated `sub_822A2988` wheel update. Confirmed `flt_827D750C` dynamically holds `1/dt`, making slip velocity calculations `(new - old) * (1/dt)` inherently rate-invariant derivatives. Retained original hook mapping as a compromise to preserve vehicle handling and slip damping for heavy vehicles (trucks/SUVs).
+- [x] **Wheel slip & vehicle steering audit (`0x822A2ED4`):** Investigated `sub_822A2988` wheel update. Confirmed `flt_827D750C` dynamically holds `1/dt`, making slip velocity calculations `(new - old) * (1/dt)` inherently rate-invariant derivatives. Hook body is a deliberate no-op. An earlier attempt replaced `f0` with `dt` instead of `1/dt`, causing a dt^2 orientation error: on race-start frames with a large first-frame delta this manifested as cars spawning tilted ~45° in mid-air. The workplan recorded this as "reverted" but the hook body was never cleared — silently broken until 2026-08-13.
 - [ ] Traffic / NPC smoothing investigation.
 - [ ] Sweep for remaining per-frame interpolations.
 
@@ -319,3 +319,4 @@ case a pattern emerges.
 
 Largely resolved as a side effect of Phase 2 â€” it was a symptom of the dropped
 ticks. Whatever remains at 60 fps is Phase 3.
+
