@@ -29539,6 +29539,8 @@ loc_826F4CA0:
 	return;
 }
 
+extern void MCLAAmbientDensityTuning(PPCRegister& r31);
+
 DEFINE_REX_FUNC(sub_826F4CB8) {
 	REX_FUNC_PROLOGUE();
 	PPCRegister temp{};
@@ -29779,6 +29781,7 @@ loc_826F4D44:
 	ctx.lr = 0x826F4E3C;
 	sub_821C04B0(ctx, base);
 	// mr r3,r29
+	MCLAAmbientDensityTuning(ctx.r31);
 	ctx.r3.u64 = ctx.r29.u64;
 	// bl 0x821c9a90
 	ctx.lr = 0x826F4E44;
@@ -31756,6 +31759,8 @@ loc_826F5AFC:
 	return;
 }
 
+extern void MCLAAmbientDensityTuning(PPCRegister& r3);
+
 DEFINE_REX_FUNC(sub_826F5B18) {
 	REX_FUNC_PROLOGUE();
 	PPCRegister temp{};
@@ -32023,6 +32028,7 @@ DEFINE_REX_FUNC(sub_826F5B18) {
 	ctx.lr = 0x826F5CA0;
 	__restfpr_25(ctx, base);
 	// lwz r12,-8(r1)
+	MCLAAmbientDensityTuning(ctx.r3);
 	ctx.r12.u64 = REX_LOAD_U32(ctx.r1.u32 + -8);
 	// mtlr r12
 	ctx.lr = ctx.r12.u64;

@@ -124,6 +124,19 @@ address = 0x823203D4
 after_instruction = true
 registers = ["f1"]
 
+# 0x826F5CA0: blr in sub_826F5B18 (mcAmbientDensityTuning constructor)
+# 0x826F4E3C: mr r3,r29 in sub_826F4CB8 (immediately after density_tuning.xml load)
+# Dynamic ambient density tuning hook for MCLA_TRAFFIC_UNSPAWN_MAX, MCLA_PED_DENSITY_SCALE, MCLA_PARKED_CAR_SCALE.
+[[midasm_hook]]
+name = "MCLAAmbientDensityTuning"
+address = 0x826F5CA0
+registers = ["r3"]
+
+[[midasm_hook]]
+name = "MCLAAmbientDensityTuning"
+address = 0x826F4E3C
+registers = ["r31"]
+
 [functions]
 # RaceGrid_SetPosition entry point (0x82264760) and RaceGrid_GetPosition entry point
 # (0x82264770): script native commands registered by sub_82264780. The script VM calls

@@ -131,6 +131,13 @@ int32_t ReadGuestInt(uint32_t guest_addr) {
   return static_cast<int32_t>(std::byteswap(raw));
 }
 
+void WriteGuestFloat(uint32_t guest_addr, float val) {
+  uint8_t* base = rex::Runtime::instance()->virtual_membase();
+  if (!base) return;
+  uint32_t raw = std::byteswap(std::bit_cast<uint32_t>(val));
+  std::memcpy(base + guest_addr, &raw, sizeof(raw));
+}
+
 // How often to emit the frame-time histogram, in seconds. Each histogram
 // covers only its own window, so it can be attributed to a location on the
 // test route rather than smearing city and hills together.
@@ -555,3 +562,54 @@ void MCLACameraBoomSmoothing(PPCRegister& f1) {
     f1.f64 = 1.0 - std::pow(1.0 - k, dt * 30.0);
   }
 }
+
+// 0x826F5CA0, end of sub_826F5B18 (mcAmbientDensityTuning constructor).
+// r3 contains the guest memory address of the mcAmbientDensityTuning instance.
+//
+// Tunables via environment variables:
+//   MCLA_TRAFFIC_UNSPAWN_MAX: float (default 400.0, e.g. 250.0 to shrink traffic tracking radius)
+//   MCLA_PED_DENSITY_SCALE: float (default 1.0, e.g. 0.5 to reduce pedestrian density)
+//   MCLA_PARKED_CAR_SCALE: float (default 1.0, e.g. 0.5 to reduce parked car density)
+void MCLAAmbientDensityTuning(PPCRegister& r3) {
+  uint32_t base = r3.u32;
+  if (base == 0) return;
+
+  // Read initial/parsed values
+  float orig_unspawn = ReadGuestFloat(base + 16);
+  float orig_ped_density = ReadGuestFloat(base + 92);
+  float orig_parked_factor = ReadGuestFloat(base + 152);
+
+  bool modified = false;
+
+  if (const char* e = std::getenv("MCLA_TRAFFIC_UNSPAWN_MAX")) {
+    float max_unspawn = static_cast<float>(std::atof(e));
+    if (max_unspawn > 0.0f && max_unspawn < orig_unspawn) {
+      WriteGuestFloat(base + 16, max_unspawn);
+      modified = true;
+    }
+  }
+
+  if (const char* e = std::getenv("MCLA_PED_DENSITY_SCALE")) {
+    float scale = static_cast<float>(std::atof(e));
+    if (scale >= 0.0f && scale <= 2.0f) {
+      WriteGuestFloat(base + 92, orig_ped_density * scale);
+      modified = true;
+    }
+  }
+
+  if (const char* e = std::getenv("MCLA_PARKED_CAR_SCALE")) {
+    float scale = static_cast<float>(std::atof(e));
+    if (scale >= 0.0f && scale <= 2.0f) {
+      WriteGuestFloat(base + 152, orig_parked_factor * scale);
+      modified = true;
+    }
+  }
+
+  if (modified) {
+    std::printf("[MCLA] Ambient density tuning applied at 0x%08X: unspawn=%.1f (was %.1f), ped_density=%.4f (was %.4f), parked_factor=%.2f (was %.2f)\n",
+                base, ReadGuestFloat(base + 16), orig_unspawn,
+                ReadGuestFloat(base + 92), orig_ped_density,
+                ReadGuestFloat(base + 152), orig_parked_factor);
+  }
+}
+

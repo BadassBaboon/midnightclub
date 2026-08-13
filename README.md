@@ -130,6 +130,9 @@ Leave `MCLA_FPS_CAP` unset to run uncapped. Not recommended: the game reaches
 | `MCLA_TEX_HARD` | `1024` | GPU texture cache hard memory limit (MB). |
 | `MCLA_TEX_RTT` | `0` | GPU texture cache limit for render-to-texture targets (MB). |
 | `MCLA_TILED_SHARED` | `false` | Disables tiled shared memory for lower emulation overhead on modern GPUs. |
+| `MCLA_TRAFFIC_UNSPAWN_MAX` | `400.0` | Max traffic unspawn tracking radius (meters). Set to e.g. `250.0` or `200.0` to reduce CPU ambient vehicle tracking overhead in dense city areas. |
+| `MCLA_PED_DENSITY_SCALE` | `1.0` | Pedestrian spawn density multiplier (`0.0` to `2.0`). Set to e.g. `0.5` or `0.0` to reduce pedestrian draw-call & AI pressure. |
+| `MCLA_PARKED_CAR_SCALE` | `1.0` | Parked car density multiplier (`0.0` to `2.0`). Set to e.g. `0.5` or `0.0` to reduce parked car rendering overhead. |
 | `MCLA_RESOLUTION_SCALE` | `1` | Internal 3D resolution multiplier. **Keep at `1`** — setting to `2` corrupts projection frustum culling and grid spawn transforms. |
 | `MCLA_TIMING_LOG` | off | `1` writes frame-time stats and a 1 ms histogram to `logs/timing_<date>_<time>_cap<N>.log`. |
 | `MCLA_MAX_FRAME_MS` | `125` | Hitch guard: caps the delta a single frame can advance. Clamped to `[16, 1000]`; cannot be disabled. |
