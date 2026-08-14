@@ -29539,8 +29539,6 @@ loc_826F4CA0:
 	return;
 }
 
-extern void MCLAAmbientDensityTuning(PPCRegister& r31);
-
 DEFINE_REX_FUNC(sub_826F4CB8) {
 	REX_FUNC_PROLOGUE();
 	PPCRegister temp{};
@@ -29781,7 +29779,6 @@ loc_826F4D44:
 	ctx.lr = 0x826F4E3C;
 	sub_821C04B0(ctx, base);
 	// mr r3,r29
-	MCLAAmbientDensityTuning(ctx.r31);
 	ctx.r3.u64 = ctx.r29.u64;
 	// bl 0x821c9a90
 	ctx.lr = 0x826F4E44;

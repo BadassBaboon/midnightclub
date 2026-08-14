@@ -40,7 +40,7 @@ class MidnightclubApp : public rex::ReXApp {
   }
 
   // Record of every SetFlag attempt, so failures are visible in a file rather
-  // than on stderr — which is invisible under `Start-Process`.
+  // than on stderr - which is invisible under `Start-Process`.
   static inline std::vector<std::string>& FlagLog() {
     static std::vector<std::string> log;
     return log;
@@ -48,7 +48,7 @@ class MidnightclubApp : public rex::ReXApp {
 
   // SetFlagByName returns false for names that were never registered. Critically,
   // cvars defined in the GPU plugin DLL are NOT registered until the plugin is
-  // loaded, which happens during Runtime::Setup() — i.e. AFTER OnPreSetup. So
+  // loaded, which happens during Runtime::Setup() - i.e. AFTER OnPreSetup. So
   // GPU flags set from OnPreSetup silently fail to bind.
   static void SetFlag(const char* phase, const char* name, const char* value) {
     bool ok = rex::cvar::SetFlagByName(name, value);
@@ -62,7 +62,7 @@ class MidnightclubApp : public rex::ReXApp {
   // which Runtime::Setup() loads *after* OnPreSetup returns. Setting them any
   // earlier does nothing at all: measured across four runs, every one of these
   // reported `FAIL pre` / `ok post`. This silently discarded the entire GPU
-  // configuration for the lifetime of the project — most consequentially vsync,
+  // configuration for the lifetime of the project - most consequentially vsync,
   // which stayed at its default of `true` while the config said `false`.
   //
   // Window/display cvars (rex/ui/flags.h) live in rexruntime and DO bind from
@@ -70,7 +70,7 @@ class MidnightclubApp : public rex::ReXApp {
   void ApplyGpuFlags(const char* phase) {
     // Internal render resolution multiplier. The guest renders 1280x720 internally,
     // and scale=2 would give 2560x1440 eDRAM-emulated render targets before
-    // upscaling to the window — which is supersampling, NOT the same as rendering
+    // upscaling to the window - which is supersampling, NOT the same as rendering
     // natively at the window resolution.
     //
     // CONFIRMED BROKEN at scale=2 (2026-08-13):
@@ -79,15 +79,15 @@ class MidnightclubApp : public rex::ReXApp {
     //     frustum plane normals derived from the projection matrix). A 2x larger
     //     eDRAM surface changes the projection aspect fed into those normals,
     //     causing the in-frustum threshold check (dot > 0.7) to produce wrong
-    //     results — the showcase picks opponents that are behind the camera.
-    //   - Cars spawn tilted 45° floating above the grid. The grid spawner
+    //     results - the showcase picks opponents that are behind the camera.
+    //   - Cars spawn tilted 45 deg floating above the grid. The grid spawner
     //     (sub_82264590 / RaceGrid_SetPosition) reads a world transform that
     //     rexglue apparently derives partly from the same render-target dimensions.
     //     With scale=2 those transforms contain garbage rotation.
     //
     // The window is already set to 2560x1440 by the display cvars below.
     // At scale=1 the emulator stretches the 1280x720 guest framebuffer to fill
-    // the 2560x1440 window using its own bilinear upscaler — exactly the same
+    // the 2560x1440 window using its own bilinear upscaler - exactly the same
     // visual path that was used in every working Xenia build.
     //
     // If a future rexglue version fixes the projection-matrix bleed-through, or
@@ -101,7 +101,7 @@ class MidnightclubApp : public rex::ReXApp {
     // ROV (rasterizer-ordered views) emulates the Xbox 360's eDRAM with exact
     // per-pixel ordering, so blending, alpha and depth behave as the hardware
     // did. RTV approximates it with real render targets, and approximation
-    // error in blending is the classic cause of wrong-coloured lighting — the
+    // error in blending is the classic cause of wrong-coloured lighting - the
     // green/red glitching seen on cars here. The startup log confirms the
     // adapter supports ROVs ("Rasterizer-ordered views: yes").
     //
@@ -114,7 +114,7 @@ class MidnightclubApp : public rex::ReXApp {
 
     // anisotropic_override is an ENUM INDEX, not a multiplier:
     //   -1 = no override, 0 = off, 1 = 1x, 2 = 2x, 3 = 4x, 4 = 8x, 5 = 16x
-    // The original config asked for "16", which is not a valid index — it read
+    // The original config asked for "16", which is not a valid index - it read
     // back as 3 (4x). 5 is the value that actually means 16x.
     SetFlag(phase, "anisotropic_override", "5");
 
@@ -126,14 +126,14 @@ class MidnightclubApp : public rex::ReXApp {
     // d3d12_pipeline_creation_threads: deliberately left at its default of -1
     // (auto). The original config asked for 8, but that call never bound, so 8
     // has never actually run. Auto sizes to the host CPU, which is a better
-    // choice than a hardcoded 8 — recording this as a decision rather than
+    // choice than a hardcoded 8 - recording this as a decision rather than
     // silently dropping the setting.
 
     // gpu_allow_invalid_fetch_constants: the GPU log warns about texture fetch
     // constants with an "invalid" type and suggests this flag. It defaults to
     // false and, because of the OnPreSetup binding bug, has never been enabled
     // until now. Enabling it changes how those invalid fetches render, so it is
-    // an unvalidated behaviour change — a candidate for the one-off white HUD
+    // an unvalidated behaviour change - a candidate for the one-off white HUD
     // seen once during testing. Switchable so it can be A/B'd if that recurs.
     const char* fetch = getenv("MCLA_ALLOW_INVALID_FETCH");
     SetFlag(phase, "gpu_allow_invalid_fetch_constants",
@@ -152,7 +152,7 @@ class MidnightclubApp : public rex::ReXApp {
     SetFlag(phase, "d3d12_tiled_shared_memory", (tiled && *tiled) ? tiled : "false");
 
     // vsync has been reading back as `true` (the default) in every run so far,
-    // despite being set to false here since the beginning — presentation has
+    // despite being set to false here since the beginning - presentation has
     // been vsync-locked the whole time. Now that it can actually bind, keep it
     // independently switchable via MCLA_VSYNC so it can be A/B'd against the
     // timer-resolution change rather than confounded with it.
@@ -174,9 +174,9 @@ class MidnightclubApp : public rex::ReXApp {
   void OnPreSetup(rex::RuntimeConfig& config) override {
     config.gpu_plugin = "xenos";
 
-    // GPU flags are NOT set here — see ApplyGpuFlags. They cannot bind yet.
+    // GPU flags are NOT set here - see ApplyGpuFlags. They cannot bind yet.
 
-    // NOTE: "mount_cache" is not a cvar in rexglue 0.9.0 — the name appears
+    // NOTE: "mount_cache" is not a cvar in rexglue 0.9.0 - the name appears
     // nowhere in the SDK headers or in rexruntimerd.dll, so the old call here
     // was a silent no-op and RPF archives were never cached in RAM.
     //
@@ -249,7 +249,7 @@ class MidnightclubApp : public rex::ReXApp {
   // falls back to a build-type default on non-Release builds, and trace on this
   // title costs ~7,500 lines/sec of synchronous formatting and file I/O during
   // gameplay. Calling rex::SetAllLevels() from OnPostInitLogging() does NOT
-  // work — verified: the [info] banner rex_app.cpp emits immediately after that
+  // work - verified: the [info] banner rex_app.cpp emits immediately after that
   // hook still reaches the log. Set the level with the REX_LOG_LEVEL
   // environment variable instead (BuildLogConfig honours it and rex_app passes
   // an empty cli_level, so env wins):
@@ -314,7 +314,7 @@ class MidnightclubApp : public rex::ReXApp {
       IMAGEHLP_LINE64 line{};
       line.SizeOfStruct = sizeof(IMAGEHLP_LINE64);
 
-      fprintf(crash_log, "=== abort() called — stack trace ===\n");
+      fprintf(crash_log, "=== abort() called - stack trace ===\n");
       for (USHORT i = 0; i < frames; ++i) {
         DWORD64 addr = reinterpret_cast<DWORD64>(stack[i]);
         DWORD displacement = 0;

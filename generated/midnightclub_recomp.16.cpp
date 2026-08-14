@@ -36403,9 +36403,9 @@ loc_823203C4:
 	ctx.fpscr.disableFlushMode();
 	ctx.f1.f64 = ctx.f27.f64;
 	// bl 0x8231d3a8
+	MCLACameraBoomSmoothing(ctx.f1);
 	ctx.lr = 0x823203D8;
 	sub_8231D3A8(ctx, base);
-	MCLACameraBoomSmoothing(ctx.f1);
 	// lwz r8,192(r31)
 	ctx.r8.u64 = REX_LOAD_U32(ctx.r31.u32 + 192);
 	// addi r29,r31,256

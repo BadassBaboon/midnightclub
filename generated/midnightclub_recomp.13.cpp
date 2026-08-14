@@ -56616,6 +56616,8 @@ loc_822D5A1C:
 	return;
 }
 
+extern void Patch_ScaleCityLOD(PPCRegister& f13);
+
 DEFINE_REX_FUNC(sub_822D5A30) {
 	REX_FUNC_PROLOGUE();
 	PPCRegister temp{};
@@ -56865,6 +56867,7 @@ loc_822D5BBC:
 	temp.u32 = REX_LOAD_U32(ctx.r31.u32 + 24);
 	ctx.f13.f64 = double(temp.f32);
 	// fmuls f0,f13,f0
+	Patch_ScaleCityLOD(ctx.f13);
 	ctx.f0.f64 = double(float(ctx.f13.f64 * ctx.f0.f64));
 	// lwz r11,0(r31)
 	ctx.r11.u64 = REX_LOAD_U32(ctx.r31.u32 + 0);

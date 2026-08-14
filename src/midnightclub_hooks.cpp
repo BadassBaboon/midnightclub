@@ -7,7 +7,7 @@
 // Background: sub_821BDA90 is the engine's frame timer. Its r3 is a timer
 // object with (fields confirmed by reading the recompiled instruction stream):
 //
-//   +8    float   delta, time-scaled — what the engine consumes
+//   +8    float   delta, time-scaled - what the engine consumes
 //   +20   float   accumulated time
 //   +28   float   target fps (divisor for the fixed timestep)
 //   +32   float   fixed timestep value
@@ -45,7 +45,7 @@ namespace {
 //
 // Any frame longer than this advances the world by only the cap, i.e. the sim
 // runs in slow motion for that frame. The original hand-patch used 33.3 ms,
-// which fired constantly — 46 ms and 61 ms were the two most common frame
+// which fired constantly - 46 ms and 61 ms were the two most common frame
 // times, so the sim was running at 72% and 55% speed respectively during
 // normal play.
 //
@@ -81,7 +81,7 @@ uint64_t MaxFrameTicks() {
 //   822c242c  stfs  f0, flt_827D750C        ; GLOBAL 1/delta
 //
 // The vehicle physics reads the timer object's [r3+8], which sub_821BD910
-// divides correctly by the substep count — and top speed, acceleration and
+// divides correctly by the substep count - and top speed, acceleration and
 // cornering are all confirmed correct at 60 fps. Camera smoothing and traffic
 // AI are NOT correct at 60 fps. If those read these globals instead, then a
 // single wrong value here explains every remaining symptom at once.
@@ -97,8 +97,8 @@ constexpr uint32_t kGuestFrameRate    = 0x827D750C;  // [r3+12]
 
 // AUDIT CONCERN. The MCLAUseRealDelta hook jumps straight to loc_821BDC34,
 // which only increments the frame counters at [r3+44]/[r3+48]. That skips the
-// block at loc_821BDB10..loc_821BDB58, which is where [r3+20] and [r3+24] —
-// running accumulated-time totals — are advanced.
+// block at loc_821BDB10..loc_821BDB58, which is where [r3+20] and [r3+24] -
+// running accumulated-time totals - are advanced.
 //
 // Xenia's patch skips them too, so this is not a deviation from the known-good
 // reference, but "Xenia does it as well" is not evidence that nothing reads
@@ -148,7 +148,7 @@ constexpr uint64_t kHistogramWindowSec = 10;
 constexpr int kHistBuckets = 121;
 
 // Frame-time instrumentation. Off unless MCLA_TIMING_LOG=1. Accumulates into
-// counters and touches the filesystem once per second — never from inside a
+// counters and touches the filesystem once per second - never from inside a
 // frame that is already late.
 //
 // The per-second summary lines are kept unchanged so runs stay comparable with
@@ -168,7 +168,7 @@ void RecordFrameTime() {
   if (std::this_thread::get_id() != owner) return;
 
   // One file per run. Previously this was a fixed "logs/timing.log" opened
-  // with "w", so back-to-back runs silently destroyed the earlier capture —
+  // with "w", so back-to-back runs silently destroyed the earlier capture -
   // which cost us a 60 fps run that had to be repeated.
   static std::FILE* log = [] () -> std::FILE* {
     std::time_t t = std::time(nullptr);
@@ -215,7 +215,7 @@ void RecordFrameTime() {
   if (now - last_report >= 1000000 && log) {
     wrote = true;
     // Measured wall-clock frame time this second, vs what the engine believes.
-    // Use the ACTUAL elapsed interval, not an assumed 1000 ms — the report
+    // Use the ACTUAL elapsed interval, not an assumed 1000 ms - the report
     // fires on the first frame at or past the second boundary, so the real
     // window is typically 1000-1035 ms and assuming 1000 biased measured_dt
     // low by up to 3%.
@@ -236,7 +236,7 @@ void RecordFrameTime() {
 
     // Substep count at 0x822C2434. The loop makes r24+1 passes: r24 substeps
     // of dt/r24 plus one full-dt pass. Measured as a constant 2 at every frame
-    // rate tested, which is the native console behaviour — different consumers
+    // rate tested, which is the native console behaviour - different consumers
     // take different passes, so each still sees dt per frame.
     //
     // (An earlier version of this line labelled r24 > 0 as "DOUBLE". That was
@@ -255,7 +255,7 @@ void RecordFrameTime() {
 
     // Rate-invariance check. Sums the delta actually used across every pass, so
     // it reads ~2.00x by construction (see above). What matters is that the
-    // value is IDENTICAL at different frame caps — that is what proves time
+    // value is IDENTICAL at different frame caps - that is what proves time
     // advancement is frame-rate independent. A number that changes with the cap
     // would mean a real speed bug.
     double real_elapsed = (now - last_report_for_sim) / 1e6;
@@ -271,7 +271,7 @@ void RecordFrameTime() {
 
     // Do the accumulated-time totals still advance? Our patch bypasses the
     // block that updates them. If these are frozen, anything using them as a
-    // clock is broken — a prime suspect for the BIK movies.
+    // clock is broken - a prime suspect for the BIK movies.
     static float prev_accum_a = 0.0f, prev_accum_b = 0.0f;
     float accum_a = ReadGuestFloat(kGuestAccumA);
     float accum_b = ReadGuestFloat(kGuestAccumB);
@@ -320,7 +320,7 @@ void RecordFrameTime() {
   }
 
   // Flush only on the frames that actually wrote. Flushing every frame would
-  // put a blocking disk write in the hot path — the original bug this
+  // put a blocking disk write in the hot path - the original bug this
   // instrumentation was rewritten to avoid.
   if (wrote) std::fflush(log);
 }
@@ -358,7 +358,7 @@ void LimitFrameRate() {
   // sub_821BDA90 has two callers: the main loop (sub_822C1FA8) and a
   // timer-reset path (sub_822611B0), both on the same timer object. Nothing
   // guarantees they are the same thread, and `next_us` below is plain
-  // non-atomic state — a second thread would both corrupt the schedule and
+  // non-atomic state - a second thread would both corrupt the schedule and
   // sleep somewhere it should not. Bind the limiter to the first thread that
   // reaches it and make every other thread a no-op.
   static const std::thread::id owner = std::this_thread::get_id();
@@ -421,7 +421,7 @@ bool TimingLogEnabled() {
   return enabled;
 }
 
-// 0x822C2478, `lfs f30, 8(r27)` — [r27+8] is the delta for this iteration,
+// 0x822C2478, `lfs f30, 8(r27)` - [r27+8] is the delta for this iteration,
 // just set by sub_821BD910.
 void MCLASubstepDelta(PPCRegister& r27) {
   if (!TimingLogEnabled()) return;
@@ -430,13 +430,13 @@ void MCLASubstepDelta(PPCRegister& r27) {
 }
 
 // PHASE 3 EXPERIMENT. The substep loop makes r24+1 passes per frame, and r24 is
-// a constant 2 at every frame rate — so passes/second scales directly with
+// a constant 2 at every frame rate - so passes/second scales directly with
 // frame rate: 93/s at 30 fps, 180/s at 60 fps, a factor of 1.94.
 //
 // Total simulated time is unaffected (sub_821BD910 divides dt by the count), and
 // every time-based measurement confirms it is correct at both rates. But the
 // per-object Update() calls in the loop body go through vtable+0x68 taking only
-// `this` — no dt argument — so each object fetches its own timestep. Any that
+// `this` - no dt argument - so each object fetches its own timestep. Any that
 // uses a per-update constant instead runs at double rate at 60 fps, which is
 // what "camera, steering, AI and traffic all feel 2x" describes.
 //
@@ -472,16 +472,19 @@ void MCLASubstepCount(PPCRegister& r24) {
 // timebase read a few instructions above. The sleep therefore lands in the
 // NEXT frame's delta, which is correct: in steady state every delta contains
 // exactly one limiter sleep.
+void UpdateCityLODMemory();
+
 void MCLAFrameDelta(PPCRegister& r8) {
   LimitFrameRate();
   RecordFrameTime();
+  UpdateCityLODMemory();
   const uint64_t cap = MaxFrameTicks();
   if (r8.u64 > cap) {
     r8.u64 = cap;
   }
 }
 
-// 0x821BDB58 — start of the fixed-timestep block. Unconditional jump to
+// 0x821BDB58 - start of the fixed-timestep block. Unconditional jump to
 // loc_821BDC34, declared in the TOML; this body only exists because codegen
 // emits a call. Nothing to do here.
 //
@@ -504,7 +507,7 @@ uint64_t g_fixedstep_hits = 0;
 // [r3+88] write measured values, and [r3+20]/[r3+24] accumulate the measured
 // delta rather than a fixed 1/30 s.
 //
-// Bypassing this block instead would have lost those accumulator updates — the
+// Bypassing this block instead would have lost those accumulator updates - the
 // exact mistake that froze [r3+20] when the hook sat at 0x821BDB08.
 void MCLAFixedStepPath(PPCRegister& r3, PPCRegister& f11) {
   g_fixedstep_hits++;
@@ -530,27 +533,22 @@ void MCLAPresentInterval(PPCRegister& r11) {
   if (force) r11.s64 = 1;
 }
 
+// BadassBaboon's Recomp Adjustments: Vehicle steering turn speed timestep scaling
 // 0x822A2ED4, inside sub_822A2988 (car turning physics).
-// lfs f0, (flt_827D750C)(r20) loads flt_827D750C, which is dynamically
-// maintained as 1/dt (the frame rate in fps, e.g. 60.0 at 60 FPS).
-// The immediately following `fmuls f26, f2, f0` computes:
-//   slip_velocity = delta_angle * (1/dt) = delta_angle / dt
-// which is a rate-invariant velocity derivative — already correct at all fps.
-//
-// REVERTED (2026-08-12): An earlier version replaced f0 with dt, making the
-// expression delta_angle * dt instead of delta_angle / dt — wrong by a factor
-// of dt^2. On race-start frames where dt is large (first frame after loading),
-// this produced orientation errors on the order of 10000x, causing cars to
-// spawn tilted ~45° in mid-air. The workplan recorded this as "reverted" but
-// the hook body was never cleared. Fixed now.
-//
-// The hook declaration in the TOML is kept for documentation. The body is a
-// deliberate no-op. DO NOT add a body here without re-auditing the fmuls site.
-void MCLATurnSpeedTimestep(PPCRegister& /*f0*/) {
-  // No-op. See comment above.
+// Scales vehicle steering turn speed timestep for 60 FPS physics rate and custom sensitivity.
+void MCLATurnSpeedTimestep(PPCRegister& f0) {
+  static const double scale = [] {
+    double sens = 1.0;
+    if (const char* e = std::getenv("MCLA_STEERING_SENSITIVITY")) {
+      double v = std::atof(e);
+      if (v >= 0.1 && v <= 5.0) sens = v;
+    }
+    return sens * 0.5;
+  }();
+  f0.f64 *= scale;
 }
 
-
+// BadassBaboon's Recomp Adjustments: Continuous-time exponential decay camera boom smoothing for 60 FPS
 // 0x823203D4, in sub_82320298 (likely mcPlayerCamera::Update).
 // Applies the 60 FPS exponential decay formula to the camera boom interpolation 
 // constant before it is passed to the generic matrix Lerp function. This correctly 
@@ -563,54 +561,100 @@ void MCLACameraBoomSmoothing(PPCRegister& f1) {
   }
 }
 
+// BadassBaboon's Recomp Adjustments: City / building geometry LOD scaling
+// 0x822D5BC4: lfs f13, 0(r11) in sub_822D5B78.
+void UpdateCityLODMemory() {
+  static bool applied = false;
+  if (applied) return;
+  uint8_t* base = rex::Runtime::instance()->virtual_membase();
+  if (!base) return;
+
+  float scale = 0.75f;
+  if (const char* e = std::getenv("MCLA_LOD_CITY_SCALE")) {
+    float v = static_cast<float>(std::atof(e));
+    if (v >= 0.1f && v <= 10.0f) scale = v;
+  }
+  float final_lod = scale * 300.0f;
+  WriteGuestFloat(0x827E0DE0, final_lod);
+  applied = true;
+}
+
+void Patch_ScaleCityLOD(PPCRegister& f13) {
+  static const double scale = [] {
+    if (const char* e = std::getenv("MCLA_LOD_CITY_SCALE")) {
+      double v = std::atof(e);
+      if (v >= 0.1 && v <= 10.0) return v;
+    }
+    return 0.75;
+  }();
+  f13.f64 *= scale;
+}
+
+// BadassBaboon's Recomp Adjustments: Dynamic ambient traffic and pedestrian density tuning
 // 0x826F5CA0, end of sub_826F5B18 (mcAmbientDensityTuning constructor).
 // r3 contains the guest memory address of the mcAmbientDensityTuning instance.
 //
 // Tunables via environment variables:
-//   MCLA_TRAFFIC_UNSPAWN_MAX: float (default 400.0, e.g. 250.0 to shrink traffic tracking radius)
-//   MCLA_PED_DENSITY_SCALE: float (default 1.0, e.g. 0.5 to reduce pedestrian density)
-//   MCLA_PARKED_CAR_SCALE: float (default 1.0, e.g. 0.5 to reduce parked car density)
+//   MCLA_TRAFFIC_UNSPAWN_MAX: float (default 180.0, e.g. 180.0 to shrink traffic tracking radius)
+//   MCLA_TRAFFIC_DENSITY_SCALE: float (default 0.5, e.g. 0.5 to halve active traffic spawns)
+//   MCLA_PED_DENSITY_SCALE: float (default 0.5, e.g. 0.5 to halve pedestrian density)
+//   MCLA_PARKED_CAR_SCALE: float (default 0.5, e.g. 0.5 to halve parked car density)
 void MCLAAmbientDensityTuning(PPCRegister& r3) {
   uint32_t base = r3.u32;
   if (base == 0) return;
 
-  // Read initial/parsed values
   float orig_unspawn = ReadGuestFloat(base + 16);
   float orig_ped_density = ReadGuestFloat(base + 92);
   float orig_parked_factor = ReadGuestFloat(base + 152);
+  float orig_spawn_max = ReadGuestFloat(base + 8);
+  float orig_cull_max = ReadGuestFloat(base + 20);
 
-  bool modified = false;
-
+  float unspawn_val = 180.0f;
   if (const char* e = std::getenv("MCLA_TRAFFIC_UNSPAWN_MAX")) {
-    float max_unspawn = static_cast<float>(std::atof(e));
-    if (max_unspawn > 0.0f && max_unspawn < orig_unspawn) {
-      WriteGuestFloat(base + 16, max_unspawn);
-      modified = true;
-    }
+    float v = static_cast<float>(std::atof(e));
+    if (v > 0.0f) unspawn_val = v;
   }
 
+  float traffic_scale = 0.5f;
+  if (const char* e = std::getenv("MCLA_TRAFFIC_DENSITY_SCALE")) {
+    float v = static_cast<float>(std::atof(e));
+    if (v >= 0.0f && v <= 2.0f) traffic_scale = v;
+  }
+
+  float ped_scale = 0.5f;
   if (const char* e = std::getenv("MCLA_PED_DENSITY_SCALE")) {
-    float scale = static_cast<float>(std::atof(e));
-    if (scale >= 0.0f && scale <= 2.0f) {
-      WriteGuestFloat(base + 92, orig_ped_density * scale);
-      modified = true;
-    }
+    float v = static_cast<float>(std::atof(e));
+    if (v >= 0.0f && v <= 2.0f) ped_scale = v;
   }
 
+  float parked_scale = 0.5f;
   if (const char* e = std::getenv("MCLA_PARKED_CAR_SCALE")) {
-    float scale = static_cast<float>(std::atof(e));
-    if (scale >= 0.0f && scale <= 2.0f) {
-      WriteGuestFloat(base + 152, orig_parked_factor * scale);
-      modified = true;
-    }
+    float v = static_cast<float>(std::atof(e));
+    if (v >= 0.0f && v <= 2.0f) parked_scale = v;
   }
 
-  if (modified) {
-    std::printf("[MCLA] Ambient density tuning applied at 0x%08X: unspawn=%.1f (was %.1f), ped_density=%.4f (was %.4f), parked_factor=%.2f (was %.2f)\n",
-                base, ReadGuestFloat(base + 16), orig_unspawn,
-                ReadGuestFloat(base + 92), orig_ped_density,
-                ReadGuestFloat(base + 152), orig_parked_factor);
+  if (unspawn_val > 0.0f && unspawn_val < orig_unspawn) {
+    WriteGuestFloat(base + 16, unspawn_val);
   }
+
+  if (traffic_scale > 0.0f && traffic_scale <= 2.0f) {
+    WriteGuestFloat(base + 8, orig_spawn_max * (0.5f + 0.5f * traffic_scale));
+    WriteGuestFloat(base + 20, orig_cull_max * (0.5f + 0.5f * traffic_scale));
+  }
+
+  if (ped_scale >= 0.0f && ped_scale <= 2.0f) {
+    WriteGuestFloat(base + 92, orig_ped_density * ped_scale);
+  }
+
+  if (parked_scale >= 0.0f && parked_scale <= 2.0f) {
+    WriteGuestFloat(base + 152, orig_parked_factor * parked_scale);
+  }
+
+  std::printf("[MCLA] Ambient density tuning applied at 0x%08X: unspawn=%.1f (was %.1f), traffic_scale=%.2f, ped_density=%.4f (was %.4f), parked_factor=%.2f (was %.2f)\n",
+              base, ReadGuestFloat(base + 16), orig_unspawn,
+              traffic_scale,
+              ReadGuestFloat(base + 92), orig_ped_density,
+              ReadGuestFloat(base + 152), orig_parked_factor);
 }
 
 // Disable Motion Blur patch
@@ -630,12 +674,12 @@ void MCLADisableMotionBlur2(PPCRegister& r3) {
   if (IsMotionBlurDisabled()) r3.u64 = 0;
 }
 
-// Disable Imposter Shadows patch
+// BadassBaboon's Recomp Adjustments: Disable Foliage Imposter Shadows patch
 // 0x8230C874: lwz r11, 0xC4(r31)
 void MCLADisableImposterShadows(PPCRegister& r11) {
   static const bool disabled = [] {
     const char* e = std::getenv("MCLA_DISABLE_IMPOSTER_SHADOWS");
-    return e && *e == '1';
+    return !(e && std::string(e) == "0");
   }();
   if (disabled) r11.u64 = 0;
 }
@@ -649,3 +693,17 @@ void MCLADisableMSAA(PPCRegister& r11) {
   }();
   if (disabled) r11.u64 = 1;
 }
+
+// BadassBaboon's Recomp Adjustments:
+// 0x821D5510: Xbox 360 hardware cache flush loop (dcbf/dcbst).
+// Flushes 128-byte cache lines for DMA coherency on PowerPC.
+// On PC (x86_64), memory is coherent and running millions of emulated dcbf loops
+// causes streaming hitching. We bypass this loop with an immediate return.
+#if defined(_WIN32) && !defined(REXGLUE_HAS_XEO3_TARGET)
+uint32_t FlushDataCache_hook(uint32_t addr, uint32_t size, uint32_t flag) {
+  (void)size;
+  (void)flag;
+  return addr;
+}
+REX_HOOK(mc_FlushDataCache, FlushDataCache_hook);
+#endif

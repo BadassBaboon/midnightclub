@@ -5,7 +5,7 @@
 # Implementations live in src/midnightclub_hooks.cpp.
 # ---------------------------------------------------------------------------
 
-# 0x821BDAB0 is `subf r8,r10,r11` in sub_821BDA90 — r8 becomes the elapsed
+# 0x821BDAB0 is `subf r8,r10,r11` in sub_821BDA90 - r8 becomes the elapsed
 # guest tick count for this frame. Clamp it so a streaming stall cannot feed an
 # unbounded delta into the physics and audio clocks. Also the once-per-frame
 # site used for frame-time instrumentation.
@@ -21,7 +21,7 @@ registers = ["r8"]
 # patches) and jump to loc_821BDC34 whenever the "timer was reset" flag at
 # [r3+56] was clear. That bypassed far too much: the block at
 # loc_821BDB10..loc_821BDB58 also advances [r3+20] and [r3+24], the engine's
-# running accumulated-time totals. Measured result — they advanced exactly once
+# running accumulated-time totals. Measured result - they advanced exactly once
 # and then sat frozen at 0.0333 for the rest of the session.
 #
 # 0x821BDB58 is the start of the fixed-timestep block proper: it compares the
@@ -42,7 +42,7 @@ name = "MCLAUseRealDelta"
 address = 0x821BDB58
 jump_address = 0x821BDC34
 
-# loc_821BDB90 — the OTHER fixed-timestep path, taken when [r3+58] or [r3+60]
+# loc_821BDB90 - the OTHER fixed-timestep path, taken when [r3+58] or [r3+60]
 # are set. Measured: leaving this alone made the sim run at 2x at 60 fps
 # (SIM RATE 4.00x vs the correct 2.00x, accumulators +1.97/s vs +1.00/s).
 #
@@ -54,8 +54,8 @@ jump_address = 0x821BDC34
 #
 # Rather than bypass the block (which would lose its accumulator updates, the
 # mistake that froze [r3+20] last time), just replace the value it loads.
-# Overwriting f11 with the measured unscaled delta — still intact in [r3+88] at
-# this point, written at 0x821BDAF8 and not clobbered until 0x821BDB9C — makes
+# Overwriting f11 with the measured unscaled delta - still intact in [r3+88] at
+# this point, written at 0x821BDAF8 and not clobbered until 0x821BDB9C - makes
 # every instruction downstream do the right thing on its own: f0 becomes
 # measured*timescale, both stores write measured values, and the accumulators
 # advance by the measured delta.
@@ -65,7 +65,7 @@ address = 0x821BDB90
 after_instruction = true
 registers = ["r3", "f11"]
 
-# 0x82419AA0 is `li r11,2` in sub_824199B0, which builds a PM4 packet — r11 is
+# 0x82419AA0 is `li r11,2` in sub_824199B0, which builds a PM4 packet - r11 is
 # the present interval in vblanks, shifted into the packet field at 0x82419AB4.
 # 2 = present every other vblank = 30 FPS. Force 1.
 [[midasm_hook]]
@@ -102,40 +102,35 @@ name = "MCLASubstepDelta"
 address = 0x822C2478
 registers = ["r27"]
 
-# 0x822A2ED4: lfs f0, 12(r20)
-# This loads the timestep used by the steering physics update. It is a fixed
-# constant in the original game (0.0333333), causing the car to steer twice
-# as fast at 60 FPS since the substep loop runs twice as often.
+# BadassBaboon's Recomp Adjustments: Vehicle steering turn speed timestep scaling
+# 0x822A2ED4: lfs f0, 12(r20) in sub_822A2988.
 [[midasm_hook]]
 name = "MCLATurnSpeedTimestep"
 address = 0x822A2ED4
 after_instruction = true
 registers = ["f0"]
 
-
-# 0x823203D4: fmr f1, f27
-# This is in sub_82320298 (likely mcPlayerCamera::Update). f1 is the interpolation
-# constant passed to sub_8231D3A8 (generic Lerp/Slerp). Applying the exponential
-# decay fix here scales the camera boom speed correctly for 60 FPS without poisoning
-# the generic math functions (which broke cockpit and HUD).
+# BadassBaboon's Recomp Adjustments: Continuous-time exponential decay camera boom smoothing for 60 FPS
+# 0x823203D4: fmr f1, f27 in sub_82320298 (mcPlayerCamera::Update).
+# f1 is the interpolation constant passed to sub_8231D3A8 (generic Lerp/Slerp).
 [[midasm_hook]]
 name = "MCLACameraBoomSmoothing"
 address = 0x823203D4
-after_instruction = true
 registers = ["f1"]
 
+# BadassBaboon's Recomp Adjustments: City / building geometry LOD scaling
+# 0x822D5BC4: lfs f13, 0(r11) in sub_822D5B78.
+[[midasm_hook]]
+name = "Patch_ScaleCityLOD"
+address = 0x822D5BC4
+registers = ["f13"]
+
+# BadassBaboon's Recomp Adjustments: Dynamic ambient traffic and pedestrian density tuning
 # 0x826F5CA0: blr in sub_826F5B18 (mcAmbientDensityTuning constructor)
-# 0x826F4E3C: mr r3,r29 in sub_826F4CB8 (immediately after density_tuning.xml load)
-# Dynamic ambient density tuning hook for MCLA_TRAFFIC_UNSPAWN_MAX, MCLA_PED_DENSITY_SCALE, MCLA_PARKED_CAR_SCALE.
 [[midasm_hook]]
 name = "MCLAAmbientDensityTuning"
 address = 0x826F5CA0
 registers = ["r3"]
-
-[[midasm_hook]]
-name = "MCLAAmbientDensityTuning"
-address = 0x826F4E3C
-registers = ["r31"]
 
 # Phase 6: Graphics Patches
 [[midasm_hook]]
@@ -150,6 +145,7 @@ address = 0x8260D0D4
 after_instruction = true
 registers = ["r3"]
 
+# BadassBaboon's Recomp Adjustments: Foliage imposter shadow bypass
 [[midasm_hook]]
 name = "MCLADisableImposterShadows"
 address = 0x8230C874
@@ -163,6 +159,8 @@ after_instruction = true
 registers = ["r11"]
 
 [functions]
+# BadassBaboon's Recomp Adjustments: Bypass Xbox 360 hardware cache flush loop (dcbf/dcbst) on PC
+0x821D5510 = { name = "mc_FlushDataCache" }
 # RaceGrid_SetPosition entry point (0x82264760) and RaceGrid_GetPosition entry point
 # (0x82264770): script native commands registered by sub_82264780. The script VM calls
 # these at race start to place cars on the starting grid. Without them, cars are never
@@ -177,7 +175,7 @@ registers = ["r11"]
 # the function table (confirmed stubs.txt: 63 hits from LR=0x82555CCC).
 0x82554080 = { is_function_start = true }
 
-# 0x82262320: small leaf — reads a game-state flag bit into a script output slot.
+# 0x82262320: small leaf - reads a game-state flag bit into a script output slot.
 # 0x822C9FE8: small buffer/queue pusher used during race scripts.
 # Both called once or twice per session from the script VM (confirmed stubs.txt 2026-08-13).
 0x82262320 = { is_function_start = true }

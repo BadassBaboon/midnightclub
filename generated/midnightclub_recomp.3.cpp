@@ -65519,7 +65519,7 @@ loc_821A16C8:
 	ctx.r4.s64 = ctx.r11.s64 + 32;
 	// bl 0x821d5510
 	ctx.lr = 0x821A174C;
-	sub_821D5510(ctx, base);
+	mc_FlushDataCache(ctx, base);
 	// addi r1,r1,112
 	ctx.r1.s64 = ctx.r1.s64 + 112;
 	// lwz r12,-8(r1)
@@ -66361,7 +66361,7 @@ loc_821A1C1C:
 	ctx.r4.u64 = __builtin_rotateleft64(ctx.r11.u32 | (ctx.r11.u64 << 32), 4) & 0xFFFFFFF0;
 	// bl 0x821d5510
 	ctx.lr = 0x821A1C34;
-	sub_821D5510(ctx, base);
+	mc_FlushDataCache(ctx, base);
 	// addi r1,r31,160
 	ctx.r1.s64 = ctx.r31.s64 + 160;
 	// b 0x823d9240
