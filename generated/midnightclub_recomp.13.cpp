@@ -11990,6 +11990,8 @@ loc_822C2E88:
 	return;
 }
 
+extern bool SkipIntro();
+
 DEFINE_REX_FUNC(sub_822C2EA8) {
 	REX_FUNC_PROLOGUE();
 	PPCRegister temp{};
@@ -12053,6 +12055,11 @@ loc_822C2F04:
 	ctx.lr = 0x822C2F08;
 	sub_822BFCC8(ctx, base);
 	// lis r11,-32121
+	if (SkipIntro()) {
+		goto loc_822C2F7C;
+	}
+	else {
+	}
 	ctx.r11.s64 = -2105081856;
 	// addi r10,r11,18332
 	ctx.r10.s64 = ctx.r11.s64 + 18332;

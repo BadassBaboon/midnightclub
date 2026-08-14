@@ -19507,11 +19507,14 @@ loc_8260EA54:
 	return;
 }
 
+extern void Patch_DofComposite(PPCRegister& r3);
+
 DEFINE_REX_FUNC(sub_8260EBB8) {
 	REX_FUNC_PROLOGUE();
 	PPCRegister temp{};
 	uint32_t ea{};
 	// mflr r12
+	Patch_DofComposite(ctx.r3);
 	ctx.r12.u64 = ctx.lr;
 	// bl 0x823d91f4
 	ctx.lr = 0x8260EBC0;

@@ -158,6 +158,26 @@ address = 0x822E4B80
 after_instruction = true
 registers = ["r11"]
 
+# BadassBaboon's Recomp Adjustments: Depth of Field (DoF) composite bypass
+# 0x8260EBB8: DoF composite entry (r3 = dofObj). Zeroing CoC vector at dofObj + 0xF0 disables full-screen blur.
+[[midasm_hook]]
+address = 0x8260EBB8
+name = "Patch_DofComposite"
+registers = ["r3"]
+
+# BadassBaboon's Recomp Adjustments: Skip intro legal movies cleanly
+[[midasm_hook]]
+address = 0x822C2F08
+name = "SkipIntro"
+jump_address_on_true = 0x822C2F7C
+
+# BadassBaboon's Recomp Adjustments: Fix phantom extra render pass mask when intro is skipped
+# 0x821315E4 in sub_82131508. Prevents bit 24 from enabling uninitialized render pass.
+[[midasm_hook]]
+address = 0x821315E4
+name = "MCLA_SkipIntroRenderPassMask"
+registers = ["r4"]
+
 [functions]
 # BadassBaboon's Recomp Adjustments: Bypass Xbox 360 hardware cache flush loop (dcbf/dcbst) on PC
 0x821D5510 = { name = "mc_FlushDataCache" }

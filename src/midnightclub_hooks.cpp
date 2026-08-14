@@ -694,6 +694,43 @@ void MCLADisableMSAA(PPCRegister& r11) {
   if (disabled) r11.u64 = 1;
 }
 
+// BadassBaboon's Recomp Adjustments: Depth of Field (DoF) composite bypass
+// 0x8260EBB8: DoF composite entry (r3 = dofObj).
+// Zeroing the Circle of Confusion (CoC) vector at dofObj + 0xF0 disables full-screen blur.
+void Patch_DofComposite(PPCRegister& r3) {
+  static const bool disabled = [] {
+    const char* e = std::getenv("MCLA_DISABLE_DOF");
+    return !(e && std::string(e) == "0"); // Disabled by default for better performance and visual clarity
+  }();
+  if (!disabled) return;
+
+  uint8_t* base = rex::Runtime::instance()->virtual_membase();
+  if (!base) return;
+  uint32_t obj_addr = r3.u32;
+  if (!obj_addr) return;
+
+  for (int i = 0; i < 16; ++i) {
+    base[obj_addr + 0xF0 + i] = 0;
+  }
+}
+
+// BadassBaboon's Recomp Adjustments: Skip intro legal movies cleanly
+bool SkipIntro() {
+  static const bool skip = [] {
+    const char* e = std::getenv("MCLA_SKIP_INTRO");
+    return !(e && std::string(e) == "0"); // Enabled by default
+  }();
+  return skip;
+}
+
+// BadassBaboon's Recomp Adjustments: Fix phantom extra render pass mask when intro is skipped
+// 0x821315E4 in sub_82131508. Prevents bit 24 from enabling uninitialized render pass.
+void MCLA_SkipIntroRenderPassMask(PPCRegister& r4) {
+  if (SkipIntro()) {
+    r4.u32 = 0xFEFFFFFFu;
+  }
+}
+
 // BadassBaboon's Recomp Adjustments:
 // 0x821D5510: Xbox 360 hardware cache flush loop (dcbf/dcbst).
 // Flushes 128-byte cache lines for DMA coherency on PowerPC.
@@ -707,3 +744,4 @@ uint32_t FlushDataCache_hook(uint32_t addr, uint32_t size, uint32_t flag) {
 }
 REX_HOOK(mc_FlushDataCache, FlushDataCache_hook);
 #endif
+
