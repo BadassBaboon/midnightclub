@@ -531,21 +531,6 @@ void MCLAPresentInterval(PPCRegister& r11) {
   if (force) r11.s64 = 1;
 }
 
-// BadassBaboon's Recomp Adjustments: Vehicle steering turn speed timestep scaling
-// 0x822A2ED4, inside sub_822A2988 (car turning physics).
-// Scales vehicle steering turn speed timestep for 60 FPS physics rate and custom sensitivity.
-void MCLATurnSpeedTimestep(PPCRegister& f0) {
-  static const double scale = [] {
-    double sens = 1.0;
-    if (const char* e = std::getenv("MCLA_STEERING_SENSITIVITY")) {
-      double v = std::atof(e);
-      if (v >= 0.1 && v <= 5.0) sens = v;
-    }
-    return sens * 0.5;
-  }();
-  f0.f64 *= scale;
-}
-
 // BadassBaboon's Recomp Adjustments: Continuous-time exponential decay camera boom smoothing for 60 FPS
 // 0x823203D4, in sub_82320298 (likely mcPlayerCamera::Update).
 // Applies the 60 FPS exponential decay formula to the camera boom interpolation 
@@ -712,43 +697,4 @@ void Patch_DofComposite(PPCRegister& r3) {
   }
 }
 
-// BadassBaboon's Recomp Adjustments: Skip intro legal movies cleanly
-bool SkipIntro() {
-  static const bool skip = [] {
-    const char* e = std::getenv("MCLA_SKIP_INTRO");
-    return e && std::string(e) == "1"; // Off by default (intro movies enabled by default)
-  }();
-  return skip;
-}
-
-// BadassBaboon's Recomp Adjustments: Fix phantom extra render pass mask when intro is skipped
-// 0x821315E4 in sub_82131508. Prevents bit 24 from enabling uninitialized render pass.
-void MCLA_SkipIntroRenderPassMask(PPCRegister& r4) {
-  if (SkipIntro()) {
-    r4.u32 = 0xFEFFFFFFu;
-  }
-}
-
-// BadassBaboon's Recomp Adjustments: Intro/legals movie pacing at 60 FPS
-// 0x821F99DC in sub_821F9918. The intro SWF is advanced with a hardcoded 1/60s per call
-// and called twice per frame. At 60 FPS, this runs at 2x speed.
-// Skipping every other advance (jumping to 0x821F9A00) restores real 1.0x playback speed.
-bool Hook_IntroHalfRate() {
-  static uint32_t call_count = 0;
-  return (call_count++ & 1) != 0; // true = skip this advance
-}
-
-// BadassBaboon's Recomp Adjustments:
-// 0x821D5510: Xbox 360 hardware cache flush loop (dcbf/dcbst).
-// Flushes 128-byte cache lines for DMA coherency on PowerPC.
-// On PC (x86_64), memory is coherent and running millions of emulated dcbf loops
-// causes streaming hitching. We bypass this loop with an immediate return.
-#if defined(_WIN32) && !defined(REXGLUE_HAS_XEO3_TARGET)
-uint32_t FlushDataCache_hook(uint32_t addr, uint32_t size, uint32_t flag) {
-  (void)size;
-  (void)flag;
-  return addr;
-}
-REX_HOOK(mc_FlushDataCache, FlushDataCache_hook);
-#endif
 

@@ -43955,7 +43955,7 @@ DEFINE_REX_FUNC(sub_821B8188) {
 	ctx.r4.s64 = int64_t(ctx.r11.s32) * int64_t(ctx.r10.s32);
 	// bl 0x821d5510
 	ctx.lr = 0x821B81D0;
-	mc_FlushDataCache(ctx, base);
+	sub_821D5510(ctx, base);
 loc_821B81D0:
 	// li r11,-1
 	ctx.r11.s64 = -1;
@@ -53870,7 +53870,7 @@ loc_821BC398:
 	ctx.r3.u64 = REX_LOAD_U32(ctx.r25.u32 + 0);
 	// bl 0x821d5510
 	ctx.lr = 0x821BC3A8;
-	mc_FlushDataCache(ctx, base);
+	sub_821D5510(ctx, base);
 	// lwz r11,1540(r26)
 	ctx.r11.u64 = REX_LOAD_U32(ctx.r26.u32 + 1540);
 	// addi r23,r23,1
@@ -54016,7 +54016,7 @@ loc_821BC460:
 	ctx.r3.u64 = REX_LOAD_U32(ctx.r31.u32 + -4);
 	// bl 0x821d5510
 	ctx.lr = 0x821BC4A8;
-	mc_FlushDataCache(ctx, base);
+	sub_821D5510(ctx, base);
 	// lwz r11,0(r31)
 	ctx.r11.u64 = REX_LOAD_U32(ctx.r31.u32 + 0);
 	// ld r10,80(r1)

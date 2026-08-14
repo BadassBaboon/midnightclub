@@ -102,14 +102,6 @@ name = "MCLASubstepDelta"
 address = 0x822C2478
 registers = ["r27"]
 
-# BadassBaboon's Recomp Adjustments: Vehicle steering turn speed timestep scaling
-# 0x822A2ED4: lfs f0, 12(r20) in sub_822A2988.
-[[midasm_hook]]
-name = "MCLATurnSpeedTimestep"
-address = 0x822A2ED4
-after_instruction = true
-registers = ["f0"]
-
 # BadassBaboon's Recomp Adjustments: Continuous-time exponential decay camera boom smoothing for 60 FPS
 # 0x823203D4: fmr f1, f27 in sub_82320298 (mcPlayerCamera::Update).
 # f1 is the interpolation constant passed to sub_8231D3A8 (generic Lerp/Slerp).
@@ -165,29 +157,7 @@ address = 0x8260EBB8
 name = "Patch_DofComposite"
 registers = ["r3"]
 
-# BadassBaboon's Recomp Adjustments: Skip intro legal movies cleanly
-[[midasm_hook]]
-address = 0x822C2F08
-name = "SkipIntro"
-jump_address_on_true = 0x822C2F7C
-
-# BadassBaboon's Recomp Adjustments: Fix phantom extra render pass mask when intro is skipped
-# 0x821315E4 in sub_82131508. Prevents bit 24 from enabling uninitialized render pass.
-[[midasm_hook]]
-address = 0x821315E4
-name = "MCLA_SkipIntroRenderPassMask"
-registers = ["r4"]
-
-# BadassBaboon's Recomp Adjustments: Intro movie pacing at 60 FPS (restores 1.0x playback rate)
-# 0x821F99DC in sub_821F9918. Skips every other advance to maintain 1.0x speed.
-[[midasm_hook]]
-address = 0x821F99DC
-name = "Hook_IntroHalfRate"
-jump_address_on_true = 0x821F9A00
-
 [functions]
-# BadassBaboon's Recomp Adjustments: Bypass Xbox 360 hardware cache flush loop (dcbf/dcbst) on PC
-0x821D5510 = { name = "mc_FlushDataCache" }
 # RaceGrid_SetPosition entry point (0x82264760) and RaceGrid_GetPosition entry point
 # (0x82264770): script native commands registered by sub_82264780. The script VM calls
 # these at race start to place cars on the starting grid. Without them, cars are never

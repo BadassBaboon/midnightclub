@@ -5147,8 +5147,6 @@ loc_822A2960:
 	return;
 }
 
-extern void MCLATurnSpeedTimestep(PPCRegister& f0);
-
 DEFINE_REX_FUNC(sub_822A2988) {
 	REX_FUNC_PROLOGUE();
 	PPCRegister temp{};
@@ -5952,7 +5950,6 @@ loc_822A2E70:
 	// lfs f0,12(r20)
 	temp.u32 = REX_LOAD_U32(ctx.r20.u32 + 12);
 	ctx.f0.f64 = double(temp.f32);
-	MCLATurnSpeedTimestep(ctx.f0);
 	// fsubs f4,f28,f5
 	ctx.f4.f64 = double(float(ctx.f28.f64 - ctx.f5.f64));
 	// fsel f3,f4,f28,f5

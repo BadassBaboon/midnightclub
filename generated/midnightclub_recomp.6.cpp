@@ -47689,8 +47689,6 @@ DEFINE_REX_FUNC(sub_821F9900) {
 	return;
 }
 
-extern bool Hook_IntroHalfRate();
-
 DEFINE_REX_FUNC(sub_821F9918) {
 	REX_FUNC_PROLOGUE();
 	PPCRegister temp{};
@@ -47804,11 +47802,6 @@ loc_821F99C0:
 	sub_825EE0E0(ctx, base);
 loc_821F99DC:
 	// lwz r3,4(r31)
-	if (Hook_IntroHalfRate()) {
-		goto loc_821F9A00;
-	}
-	else {
-	}
 	ctx.r3.u64 = REX_LOAD_U32(ctx.r31.u32 + 4);
 	// lis r11,-32255
 	ctx.r11.s64 = -2113863680;

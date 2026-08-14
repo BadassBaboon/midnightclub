@@ -3144,8 +3144,6 @@ loc_821314B0:
 	return;
 }
 
-extern void MCLA_SkipIntroRenderPassMask(PPCRegister& r4);
-
 DEFINE_REX_FUNC(sub_82131508) {
 	REX_FUNC_PROLOGUE();
 	PPCRegister temp{};
@@ -3283,7 +3281,6 @@ loc_821315D8:
 	// lwz r3,-8092(r11)
 	ctx.r3.u64 = REX_LOAD_U32(ctx.r11.u32 + -8092);
 	// bl 0x822e5b00
-	MCLA_SkipIntroRenderPassMask(ctx.r4);
 	ctx.lr = 0x821315E8;
 	sub_822E5B00(ctx, base);
 loc_821315E8:

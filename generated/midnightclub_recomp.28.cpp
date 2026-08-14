@@ -60891,7 +60891,7 @@ loc_8246890C:
 	ctx.r4.s64 = int64_t(ctx.r10.s32) * int64_t(ctx.r9.s32);
 	// bl 0x821d5510
 	ctx.lr = 0x8246893C;
-	mc_FlushDataCache(ctx, base);
+	sub_821D5510(ctx, base);
 	// lwz r8,0(r30)
 	ctx.r8.u64 = REX_LOAD_U32(ctx.r30.u32 + 0);
 	// lwz r11,16(r31)
