@@ -132,6 +132,8 @@ Leave `MCLA_FPS_CAP` unset to run uncapped. Not recommended: the game reaches
 | `MCLA_PARKED_CAR_SCALE` | `0.5` | Roadside parked car density multiplier (`0.0` to `2.0`). Halves parked vehicle counts. |
 | `MCLA_TRAFFIC_UNSPAWN_MAX` | `180.0` | Max traffic unspawn tracking radius (meters). Reduces distant CPU vehicle tracking overhead. |
 | `MCLA_STEERING_SENSITIVITY` | `1.0` | Vehicle steering sensitivity multiplier (`0.1` to `5.0`). Automatically scales with frame rate. |
+| `MCLA_DISABLE_DOF` | `1` (enabled) | Disable full-screen Depth of Field composite passes, saving GPU fill rate and improving clarity. Set to `0` to re-enable DoF blur. |
+| `MCLA_SKIP_INTRO` | `1` (enabled) | Skip intro legal movies cleanly on boot and fix render pass mask. Set to `0` to show intro movies. |
 | `MCLA_DISABLE_IMPOSTER_SHADOWS` | `1` (enabled) | Bypass tree foliage imposter shadow submission, saving GPU fill rate in Beverly Hills / Hollywood. |
 | `MCLA_DISABLE_MOTION_BLUR` | `0` (off) | Set to `1` to disable camera and per-object motion blur passes. |
 | `MCLA_DISABLE_MSAA` | `0` (off) | Set to `1` to disable hardware MSAA. |
