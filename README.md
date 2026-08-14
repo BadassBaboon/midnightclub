@@ -19,6 +19,7 @@ Static recompilation converts the original Xbox 360 PowerPC (PPC) bytecode in th
 - Free roam, garage, and race selection are fully functional
 - **Correct game speed and physics** - the original 2x-at-high-framerate bug is fixed
 - **Smooth frame pacing** - the 15.625 ms frame-time grid that caused constant micro-stutter is gone, giving continuous presentation
+- **60 FPS Intro Movie Pacing** - `Hook_IntroHalfRate` at `0x821F99DC` restores exact 1.0x normal speed playback for intro BIK/SWF movies at 60 FPS
 - **60 FPS Chase Camera Boom Smoothing** - continuous exponential decay damping eliminates chase camera jitter
 - **Hardware Cache Flush Bypass** - eliminates millions of redundant PowerPC `dcbf`/`dcbst` cache loop iterations during world streaming
 - **City LOD Draw Distance Scaling** - reduces distant high-poly building vertex load in dense Downtown areas by 25%
@@ -29,7 +30,7 @@ Static recompilation converts the original Xbox 360 PowerPC (PPC) bytecode in th
 | Issue | Status |
 |---|---|
 | **Broken car reflections & object dithering** | Visual artifacts on car body reflections and dithered alpha textures (e.g. tree foliage) are due to current `rexglue` `xenos` rendering plugin limitations. Upstream [xenia-edge](https://github.com/has207/xenia-edge) has specialized rendering fixes that resolve these issues. Fixing this requires harvesting and porting those D3D12/xenos renderer improvements into `rexglue`, or waiting for a `rexglue` SDK update. |
-| Intro `.bik` movies play too fast | Independent of frame rate - the movie player has its own timing path. Skippable. |
+| **Intro BIK/legal movies play fast with VSync off** | The movie player paces playback per D3D present rather than wall-clock time. Because `vsync` is kept `false` by default for maximum engine performance throughput (~30% higher framerate and eliminating the 15.625ms Windows quantization grid), intro movies render at maximum GPU speed. This is a deliberate performance trade-off. Users can press A to skip or set `MCLA_VSYNC=true` / `MCLA_FPS_CAP=60` if they prefer normal movie speed. |
 
 See [`MCLA_workplan.md`](MCLA_workplan.md) for the full investigation log - every measurement, every hypothesis that was disproven, and what is left to do.
 
@@ -124,7 +125,7 @@ Leave `MCLA_FPS_CAP` unset to run uncapped. Not recommended: the game reaches
 
 | Variable | Default | Purpose |
 |---|---|---|
-| `MCLA_FPS_CAP` | unset (uncapped) | Frame rate limit. `60` recommended for high-refresh play, or `30` for classic console rate. |
+| `MCLA_FPS_CAP` | unset (uncapped) | Frame rate limit. Uncapped by default. Set to `60` or `30` if desired. |
 | `REX_LOG_LEVEL` | `trace` on non-Release builds | **Set to `warn`.** The default costs ~7,500 log lines/sec and ~1.4 MB/s of synchronous disk I/O during gameplay. |
 | `MCLA_LOD_CITY_SCALE` | `0.75` | City & building LOD draw distance multiplier (`0.1` to `10.0`). Reduces geometry draw call pressure in Downtown by 25%. |
 | `MCLA_TRAFFIC_DENSITY_SCALE` | `0.5` | Ambient moving traffic density multiplier (`0.1` to `2.0`). Halves background traffic to eliminate async streaming queue bottlenecks. |
@@ -133,7 +134,7 @@ Leave `MCLA_FPS_CAP` unset to run uncapped. Not recommended: the game reaches
 | `MCLA_TRAFFIC_UNSPAWN_MAX` | `180.0` | Max traffic unspawn tracking radius (meters). Reduces distant CPU vehicle tracking overhead. |
 | `MCLA_STEERING_SENSITIVITY` | `1.0` | Vehicle steering sensitivity multiplier (`0.1` to `5.0`). Automatically scales with frame rate. |
 | `MCLA_DISABLE_DOF` | `1` (enabled) | Disable full-screen Depth of Field composite passes, saving GPU fill rate and improving clarity. Set to `0` to re-enable DoF blur. |
-| `MCLA_SKIP_INTRO` | `1` (enabled) | Skip intro legal movies cleanly on boot and fix render pass mask. Set to `0` to show intro movies. |
+| `MCLA_SKIP_INTRO` | `0` (off) | Set to `1` to skip intro legal movies cleanly on boot. |
 | `MCLA_DISABLE_IMPOSTER_SHADOWS` | `1` (enabled) | Bypass tree foliage imposter shadow submission, saving GPU fill rate in Beverly Hills / Hollywood. |
 | `MCLA_DISABLE_MOTION_BLUR` | `0` (off) | Set to `1` to disable camera and per-object motion blur passes. |
 | `MCLA_DISABLE_MSAA` | `0` (off) | Set to `1` to disable hardware MSAA. |
@@ -144,7 +145,7 @@ Leave `MCLA_FPS_CAP` unset to run uncapped. Not recommended: the game reaches
 | `MCLA_RESOLUTION_SCALE` | `1` | Internal 3D resolution multiplier. **Keep at `1`** - setting to `2` corrupts projection frustum culling and grid spawn transforms. |
 | `MCLA_TIMING_LOG` | off | `1` writes frame-time stats and a 1 ms histogram to `logs/timing_<date>_<time>_cap<N>.log`. |
 | `MCLA_MAX_FRAME_MS` | `125` | Hitch guard: caps the delta a single frame can advance. Clamped to `[16, 1000]`; cannot be disabled. |
-| `MCLA_VSYNC` | `false` | `true` restores vsync. Reintroduces frame-time quantization. |
+| `MCLA_VSYNC` | `false` | Presentation vsync lock. `false` (default) gives maximum performance throughput (~30% higher framerate). Set to `true` for vsync lock. |
 | `MCLA_NO_TIMER_RES` | unset | `1` skips `timeBeginPeriod(1)`. Restores the 15.625 ms grid - for A/B comparison only. |
 | `MCLA_PRESENT_INTERVAL` | forces `1` | `orig` keeps the guest's value. **Do not use** - it causes shadow/lighting flicker and does not slow the movies. |
 

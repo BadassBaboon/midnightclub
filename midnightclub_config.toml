@@ -178,6 +178,13 @@ address = 0x821315E4
 name = "MCLA_SkipIntroRenderPassMask"
 registers = ["r4"]
 
+# BadassBaboon's Recomp Adjustments: Intro movie pacing at 60 FPS (restores 1.0x playback rate)
+# 0x821F99DC in sub_821F9918. Skips every other advance to maintain 1.0x speed.
+[[midasm_hook]]
+address = 0x821F99DC
+name = "Hook_IntroHalfRate"
+jump_address_on_true = 0x821F9A00
+
 [functions]
 # BadassBaboon's Recomp Adjustments: Bypass Xbox 360 hardware cache flush loop (dcbf/dcbst) on PC
 0x821D5510 = { name = "mc_FlushDataCache" }

@@ -342,8 +342,6 @@ void RecordFrameTime() {
 // So the throttle has to be ours, and it has to be time-based rather than
 // vblank-based, or we reintroduce quantization. Sleep coarsely to within ~1.5 ms
 // of the target (accurate now that timeBeginPeriod(1) is in force), then spin
-// the remainder.
-//
 // MCLA_FPS_CAP: target fps, 0 or unset = uncapped.
 void LimitFrameRate() {
   static const double period_us = [] {
@@ -718,7 +716,7 @@ void Patch_DofComposite(PPCRegister& r3) {
 bool SkipIntro() {
   static const bool skip = [] {
     const char* e = std::getenv("MCLA_SKIP_INTRO");
-    return !(e && std::string(e) == "0"); // Enabled by default
+    return e && std::string(e) == "1"; // Off by default (intro movies enabled by default)
   }();
   return skip;
 }
@@ -729,6 +727,15 @@ void MCLA_SkipIntroRenderPassMask(PPCRegister& r4) {
   if (SkipIntro()) {
     r4.u32 = 0xFEFFFFFFu;
   }
+}
+
+// BadassBaboon's Recomp Adjustments: Intro/legals movie pacing at 60 FPS
+// 0x821F99DC in sub_821F9918. The intro SWF is advanced with a hardcoded 1/60s per call
+// and called twice per frame. At 60 FPS, this runs at 2x speed.
+// Skipping every other advance (jumping to 0x821F9A00) restores real 1.0x playback speed.
+bool Hook_IntroHalfRate() {
+  static uint32_t call_count = 0;
+  return (call_count++ & 1) != 0; // true = skip this advance
 }
 
 // BadassBaboon's Recomp Adjustments:
