@@ -132,20 +132,15 @@ struct mcAmbientDensityTuning {
   void SetParkedFactor(float v) { WriteBEFloat(reinterpret_cast<uint8_t*>(&parked_factor), v); }
 };
 
-// Guest struct offsets are load-bearing: a wrong one silently reads or writes
-// unrelated memory rather than failing. Assert every one.
-static_assert(offsetof(mcAmbientDensityTuning, spawn_max)     == 0x08);
-static_assert(offsetof(mcAmbientDensityTuning, unspawn_max)   == 0x10);
-static_assert(offsetof(mcAmbientDensityTuning, cull_max)      == 0x14);
-static_assert(offsetof(mcAmbientDensityTuning, ped_density)   == 0x60);
-static_assert(offsetof(mcAmbientDensityTuning, parked_factor) == 0x98);
 
 
 // mcDofObject - Depth of Field composite parameters
 // Reconstructed from sub_8260EBB8
 struct mcDofObject {
   uint8_t pad_00[0xF0];        // +0x00..0xEF (0..239)
-  Vector4BE coc_vector;        // +0xF0 (240) - Circle of Confusion vector (near/far blur params)
+  // +0xF0 - VERIFIED: uploaded as a 16-byte float4 shader constant by
+  // sub_8260EBB8 (addi r29,r31,0xF0 -> sub_8218A6E0 with size 0x10).
+  Vector4BE coc_vector;
 
   void ZeroCoC() {
     coc_vector.Set(0.0f, 0.0f, 0.0f, 0.0f);
@@ -239,6 +234,68 @@ constexpr uint32_t kCityManagerGlobalPtr   = 0x827E0DC8;
 constexpr uint32_t kBaseLodDistanceAddr    = 0x827E0DE0; // float: 300.0f stock
 constexpr uint32_t kActiveLodDistanceAddr  = 0x827E0E50; // float: dynamic scaled distance
 constexpr uint32_t kLodSpeedScaleAddr      = 0x827E0DEC; // float: velocity-interpolated factor
+
+
+// ---------------------------------------------------------------------------
+// Guest struct offset assertions.
+//
+// These exist because mcAmbientDensityTuning silently had TWO wrong offsets:
+// pad_18[72] starting at +0x18 pushed ped_density to +0x60 and parked_factor to
+// +0x9C, while the comments claimed +0x5C and +0x98. Nothing caught it -
+// parked_factor read memory the constructor never writes, so
+// MCLA_PARKED_CAR_SCALE scaled nothing for the entire life of the feature and
+// logged "-0.00 (was -0.00)" every time.
+//
+// WHAT THESE PROVE: the C++ layout matches the offsets in the comments. That is
+// the padding-arithmetic bug class, now impossible to reintroduce silently.
+//
+// WHAT THEY DO NOT PROVE: that an offset is the right field in the guest. Only
+// reverse engineering establishes that. Verification status is per struct
+// below - never treat an assert as evidence of semantic correctness.
+// ---------------------------------------------------------------------------
+
+// VERIFIED against the sub_826F5B18 constructor.
+static_assert(offsetof(mcAmbientDensityTuning, spawn_max)     == 0x08);
+static_assert(offsetof(mcAmbientDensityTuning, unspawn_max)   == 0x10);
+static_assert(offsetof(mcAmbientDensityTuning, cull_max)      == 0x14);
+static_assert(offsetof(mcAmbientDensityTuning, ped_density)   == 0x60);
+static_assert(offsetof(mcAmbientDensityTuning, parked_factor) == 0x98);
+
+// VERIFIED in sub_8260EBB8. Not accessed by displacement, which is why an
+// earlier audit grepping for "0xF0(r31)" wrongly concluded it was unused. It is
+// taken by address and uploaded as a shader constant:
+//
+//   8260ed20  lwz  r11, 0x80(r31)    ; shader / effect object
+//   8260ed24  addi r29, r31, 0xF0    ; &coc_vector
+//   8260ed34  li   r7, 0x10          ; 16 bytes = one float4
+//   8260ed38  mr   r6, r29           ; data pointer
+//   8260ed44  bl   sub_8218A6E0      ; shader parameter setter
+//
+// sub_8218A6E0 indexes a parameter table and scales by 16 (rotlwi r6,4 - the
+// float4 constant-register stride), confirming a float4 shader constant. So
+// zeroing it genuinely feeds the DoF shader a zero blur vector.
+static_assert(sizeof(Vector4BE) == 16);
+static_assert(offsetof(mcDofObject, coc_vector) == 0xF0);
+
+// UNVERIFIED against the binary - documentation only, not read or written by
+// any hook today. The asserts pin the C++ layout so it cannot drift, but
+// confirm the offsets in IDA before using any of these at runtime.
+static_assert(offsetof(grmCitySector, aabb_min) == 0xD0);
+static_assert(offsetof(grmCitySector, aabb_max) == 0xE0);
+static_assert(offsetof(grmCitySector, name_ptr) == 0xF0);
+static_assert(sizeof(grmCitySector) == 0x130);
+
+static_assert(offsetof(mcCity, map_bounds_ptr)  == 0x04);
+static_assert(offsetof(mcCity, sector_count)    == 0x0C);
+static_assert(offsetof(mcCity, sectors_arr_ptr) == 0x14);
+
+static_assert(offsetof(grcTexture, name_ptr)     == 0x18);
+static_assert(offsetof(grcTexture, d3d_base_ptr) == 0x1C);
+static_assert(offsetof(grcTexture, width)        == 0x20);
+static_assert(offsetof(grcTexture, height)       == 0x22);
+static_assert(offsetof(grcTexture, stride)       == 0x24);
+static_assert(offsetof(grcTexture, mip_levels)   == 0x27);
+static_assert(offsetof(grcTexture, color_exp_r)  == 0x28);
 
 } // namespace rage
 

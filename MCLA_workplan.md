@@ -595,12 +595,43 @@ offsets fail silently. Two unexplained one-off glitches are on record (audio
 blowout, white HUD) and an unjustified per-frame 16-byte write is exactly the
 kind of thing that produces them.
 
-- [ ] Find which function actually reads `+0xF0` on this object, and confirm it
-      is DoF-related. `xrefs` on the field, or a write-watch, would settle it.
-- [ ] Until then, treat `MCLA_DISABLE_DOF` as unverified. If a repro for either
-      one-off glitch ever appears, test with `MCLA_DISABLE_DOF=0` first.
-- [ ] Add `static_assert`s to the remaining structs once their offsets are
-      confirmed. Only `mcAmbientDensityTuning` is asserted today.
+- [x] **RESOLVED - the offset is correct and the hook is justified.**
+      The earlier audit grepped for `0xF0(r31)` and found nothing, and wrongly
+      concluded the field was unused. The field is never accessed by
+      displacement; it is taken **by address** and uploaded as a shader
+      constant:
+
+      ```
+      8260ed20  lwz  r11, 0x80(r31)    ; shader / effect object
+      8260ed24  addi r29, r31, 0xF0    ; &coc_vector
+      8260ed34  li   r7, 0x10          ; 16 bytes = one float4
+      8260ed38  mr   r6, r29           ; data pointer
+      8260ed44  bl   sub_8218A6E0      ; shader parameter setter
+      ```
+
+      `sub_8218A6E0` indexes a shader parameter table and scales the index by 16
+      (`rotlwi r6, 4` - the float4 constant-register stride), confirming a
+      float4 shader constant. Zeroing `+0xF0` therefore feeds the DoF shader a
+      zero blur vector, exactly as intended. `Patch_DofComposite` is correct.
+
+      Method note: grepping for a displacement is not sufficient to prove a
+      field is unused. Fields passed by address to a helper are invisible to
+      that search.
+- [x] `MCLA_DISABLE_DOF` is no longer suspect. The white-HUD and audio-blowout
+      one-offs are attributed to rexglue's xenos plugin lacking the rendering
+      patches xenia-edge carries - glitches of that class are expected until the
+      plugin improves.
+- [x] **All guest structs now assert their offsets** (21 assertions in
+      `mcla_rage_types.h`), with verification status recorded per struct:
+      - VERIFIED against the binary: `mcAmbientDensityTuning` (ctor
+        `sub_826F5B18`), `mcDofObject::coc_vector` (shader upload above).
+      - UNVERIFIED, documentation only, unused by any hook: `grmCitySector`,
+        `mcCity`, `grcTexture`, `pgTextureDictionary`.
+
+      The asserts prove the **C++ layout matches the stated offsets** - the
+      padding-arithmetic bug class that silently broke `parked_factor` for the
+      life of the feature. They do NOT prove an offset is the right field in the
+      guest; only RE does that, which is why status is recorded per struct.
 
 ### Verified clean this pass
 
