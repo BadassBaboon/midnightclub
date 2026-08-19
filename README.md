@@ -32,9 +32,10 @@ Static recompilation converts the original Xbox 360 PowerPC (PPC) bytecode in th
 | Issue | Status |
 |---|---|
 | **Broken car reflections & object dithering** | Visual artifacts on car body reflections and dithered alpha textures (e.g. tree foliage) are due to current `rexglue` `xenos` rendering plugin limitations. Upstream [xenia-edge](https://github.com/has207/xenia-edge) has specialized rendering fixes that resolve these issues. Fixing this requires harvesting and porting those D3D12/xenos renderer improvements into `rexglue`, or waiting for a `rexglue` SDK update. |
-| **Intro BIK/legal movies play fast with VSync off** | The movie player paces playback per D3D present rather than wall-clock time. Because `vsync` is kept `false` by default for maximum engine performance throughput (~30% higher framerate and eliminating the 15.625ms Windows quantization grid), intro movies render at maximum GPU speed. This is a deliberate performance trade-off. Users can press A to skip or set `MCLA_VSYNC=true` / `MCLA_FPS_CAP=60` if they prefer normal movie speed. |
+| **Intro BIK/legal movies play fast** | Playback pacing is inherent to the 60 FPS unlock itself; LARecomp exhibits the same behaviour with the same unlocking method. **Not** caused by present rate: tested at hard 30, 45 and 60 FPS caps and the speed is identical at all three, so capping the frame rate does not help. Workarounds: press A to skip, or set `MCLA_SKIP_INTRO=1`. Tracked as a known limitation rather than a bug. |
 
-See [`MCLA_workplan.md`](MCLA_workplan.md) for the full investigation log - every measurement, every hypothesis that was disproven, and what is left to do.
+See [`TECHNICAL_NOTES.md`](documentation/TECHNICAL_NOTES.md) for the engine-level findings and
+[`MCLA_workplan.md`](documentation/MCLA_workplan.md) for the full investigation log - every measurement, every hypothesis that was disproven, and what is left to do.
 
 ---
 
@@ -177,6 +178,8 @@ For users wanting the exact original 30 FPS console framerate, `MCLA_FPS_CAP=30`
 | `MCLA_GAME_DATA` | auto-detect | Path to the folder containing `default.xex`. Overrides auto-detection. |
 | `MCLA_STRINGS_FILE` | auto-detect | Path to `Codex.Games.MCLA.strings.txt` for symbol resolution. Optional. |
 | `MCLA_NO_STUB_SWEEP` | `0` | `1` skips stubbing ~1.7M unmapped addresses at startup (~400 ms). Only safe if `stubs.txt` stays empty. |
+| `MCLA_AUDIO_QFRAMES` | `8` | Max buffered audio frames (4-64). Higher trades latency for stability. |
+| `MCLA_CACHE_FENCE` | `1` | `0` drops the memory fence in the cache-flush bypass. Diagnostic only. |
 | `MCLA_TIMING_LOG` | off | `1` writes frame-time stats and a 1 ms histogram to `logs/timing_<date>_<time>_cap<N>.log`. |
 | `MCLA_MAX_FRAME_MS` | `125` | Hitch guard: caps the delta a single frame can advance. Clamped to `[16, 1000]`; cannot be disabled. |
 | `MCLA_VSYNC` | `false` | Presentation vsync lock. `false` (default) gives maximum performance throughput (~30% higher framerate). Set to `true` for vsync lock. |
@@ -224,7 +227,7 @@ The rexGlu SDK translates each PPC function in the XEX into a C++ function. Func
 
 | Problem | Fix |
 |---|---|
-| Game ran at 2x speed above 30 fps | `MCLAUseRealDelta` hook at `0x821BDB08`. The engine had a fixed-timestep path that discarded the measured delta. Unlike Xenia's patch, this keeps the "timer was reset" guard at `[r3+56]` - skipping it unconditionally feeds a garbage delta on reset frames and desynchronises the audio threads. |
+| Game ran at 2x speed above 30 fps | `MCLAUseRealDelta` at `0x821BDB58` **and** `MCLAFixedStepPath` at `0x821BDB90`. There are two fixed-timestep paths and patching only one leaves the game at 2x. Unlike Xenia's patch this preserves the "timer was reset" guard at `[r3+56]` (`0x821BDB08`) - skipping that unconditionally feeds a garbage delta on reset frames and desynchronises the audio threads. |
 | Present interval locked to 30 Hz | `MCLAPresentInterval` hook at `0x82419AA0`, a PM4 packet field, `2` -> `1` vblanks. |
 | Frame times quantized to a 15.625 ms grid | `timeBeginPeriod(1)` plus `vsync=false`. The grid was Windows' default timer granularity, not the display and not the guest vblank rate. Both changes are required; either alone leaves the grid intact. ~30% throughput gain. |
 | Nothing throttled presentation once vsync was off | Time-based frame limiter (`MCLA_FPS_CAP`) with a wall-clock deadline. Deliberately not vblank-based, which would reintroduce quantization. |
@@ -250,20 +253,28 @@ The rexGlu SDK translates each PPC function in the XEX into a C++ function. Func
 
 ```
 midnightclub/
+  README.md                  # You are here
+  documentation/
+    RUNNING.md               # Quick-reference run and debugging guide
+    TECHNICAL_NOTES.md       # Engine-level findings, corrections, gotchas
+    MCLA_workplan.md         # Full investigation log + deferred work
   src/
     main.cpp                 # Entry point (rexGlu-generated, do not edit)
     midnightclub_app.h       # App customization: paths, cvars, stubs, VFS setup
-    midnightclub_hooks.cpp   # Mid-asm hook implementations (timing fixes)
+    midnightclub_hooks.cpp   # Mid-asm hook implementations
+    mcla_rage_types.h        # Big-endian RAGE structs, offsets static_asserted
+    mcla_symbol_resolver.h   # Jenkins hash -> asset name (diagnostics, opt-in)
+  assets/
+    gamecontrollerdb.txt     # SDL controller mappings, copied next to the exe
   generated/                 # REGENERATED BY CODEGEN - never hand-edit
     midnightclub_init.h      # Runtime macros and REX_CALL_INDIRECT_FUNC
-    midnightclub_recomp.*.cpp  # PPC - C++ translated game code (60+ files)
+    midnightclub_recomp.*.cpp  # PPC -> C++ translated game code (60+ files)
     rexglue.cmake            # SDK CMake integration
   midnightclub_manifest.toml # Codegen entry point (XEX path, includes config)
   midnightclub_config.toml   # Function hints + [[midasm_hook]] declarations
   CMakeLists.txt
   CMakePresets.json
   launch.vs.json             # Visual Studio debug launch config
-  RUNNING.md                 # Quick-reference run guide
 ```
 
 ### Mid-asm hooks

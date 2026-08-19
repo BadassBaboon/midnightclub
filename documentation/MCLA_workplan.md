@@ -80,8 +80,12 @@ timer granularity**. Not the display, not the guest vblank rate - sweeping
 ### Phase 3a - the 2x speed bug [DONE] SOLVED, then verified absent
 
 - [x] Original cause: the fixed-timestep path in `sub_821BDA90`. Fixed by the
-      `MCLAUseRealDelta` hook at `0x821BDB08`, which keeps the reset guard
-      (unlike Xenia's patch) while bypassing the 30 Hz paths.
+      `MCLAUseRealDelta` hook, originally placed at `0x821BDB08`. **The hook
+      was later moved to `0x821BDB58`** (see the audit sections below) because
+      the wider bypass also froze the `[r3+20]`/`[r3+24]` accumulators, and a
+      second hook `MCLAFixedStepPath` at `0x821BDB90` was needed for the other
+      fixed-timestep path. `0x821BDB08` remains the location of the `[r3+56]`
+      reset guard, which is deliberately preserved unlike Xenia's patch.
 - [x] **Verified by direct measurement that time advancement is now frame-rate
       correct.** Summed the delta actually used across every substep-loop
       iteration: 2.00x at the 30 cap and 2.00x at the 60 cap - *identical*.
@@ -306,16 +310,24 @@ Benchmarked the configurations on a standard route through Downtown. The "Expand
 
 ### Phase 5 - hygiene
 
-- [ ] `.loc` dummies belong at `E:\MCLA\MCLA_Game_Files\mc4\art\city\` - where
-      the `t:` mount resolves. Copies in `midnightclub\cache\` and
-      `user_data\Partition1\` are never consulted. Startup-only, low impact.
-- [ ] Rewrite `recompilation_technical_rundown.md`. It states the wrong
-      instruction at `0x821BDB08`, describes `0x82419AA0` as a delta-time patch,
-      claims `mount_cache` and the `.loc` fix work, and says the timebase is
-      50 MHz. It will mislead anyone who reads it.
-- [ ] Remove or gate the instrumentation-only hooks (`MCLASubstepCount`,
-      `MCLASubstepDelta`) once Phase 3 is done - they cost a guest-memory read
-      per substep iteration.
+- [x] **`.loc` dummies - CLOSED, deliberately no action.** Measured: exactly 7
+      warnings, all inside 1 second, once per session at startup, never
+      recurring. There is no per-frame cost to remove. The files are
+      `test_`-prefixed leftover dev assets absent from the retail disc, and
+      fabricating empty ones risks the parser accepting garbage instead of
+      cleanly failing. The old claim that dummies "eliminated file-not-found
+      exception overhead" was never measured and does not hold up.
+- [x] **Rewritten as `TECHNICAL_NOTES.md`** and moved into the repo; the old
+      `recompilation_technical_rundown.md` is deleted. Every incorrect claim is
+      corrected inline and marked **CORRECTION** so anyone who read the old
+      version can see what changed. Adds a "plausible-sounding things that are
+      wrong" table so dead hypotheses are not re-tested.
+- [x] **Instrumentation hooks - CLOSED, gated rather than removed.** Both now
+      return early on a cached static when `MCLA_TIMING_LOG` is unset, so the
+      cost is one bool test three times per frame - the guest-memory read only
+      happens when logging is on. Kept because `SIM RATE` is the regression
+      check for the whole frame-rate-independence effort: if anyone alters the
+      timing hooks later, that line is what catches it.
 
 ### Noted, not chased
 
@@ -761,3 +773,93 @@ First results:
   The dense-area cost is **not** draw-call submission, which points at the
   recompiled guest code itself (traffic AI, physics, streaming) - consistent
   with LOD and ambient density tuning being the things that helped.
+
+---
+
+# DEFERRED WORK - to be tackled at a later date
+
+Three known issues, all deliberately parked. Each has its investigation state
+recorded so work resumes from evidence rather than from scratch.
+
+## D1. Audio jitter in dense areas
+
+**Symptom.** Crackling / jittery audio, worst in the first-person cockpit
+camera, on tyre skid loops, and in dense areas. Present at every frame rate.
+
+**Eliminated by measurement - do not re-test these:**
+
+| cause | how it was ruled out |
+|---|---|
+| Memory ordering | `MCLA_CACHE_FENCE=0` vs default: no audible difference |
+| General CPU starvation | Traffic/ped density at 0.1 (90% less to simulate), same location: no difference |
+| Output buffer depth | `audio_maxqframes` 8 -> 16 -> 32: no difference at any value |
+| Output underrun | `buffer_queue_depth` measured pinned at its maximum, never drains |
+
+The `buffer_queue_depth` result is the decisive one: the audio device is never
+starved for data, so nothing downstream of the mixer can be the cause, and extra
+buffering cannot help by construction.
+
+**What remains.** Per-voice DSP or mixing *inside the guest's own audio engine*,
+upstream of the output queue. The symptom profile fits: cockpit view adds
+per-voice reverb and occlusion, skid loops are continuous pitch-modulated
+sources, and dense areas maximise concurrent voice count.
+
+**Resume here:**
+- [ ] Cheap first: does Xenia show the same crackle in cockpit view in dense
+      traffic? If yes this is an inherited XMA/audio emulation limitation, same
+      category as the rendering artifacts, and should be documented not chased.
+- [ ] Otherwise: IDA investigation of the guest audio subsystem. Find the mixer
+      / voice update and check whether per-voice DSP parameters are updated per
+      frame rather than per unit time.
+- [ ] `MCLA_AUDIO_QFRAMES` stays wired (default 8) and is harmless; useful if
+      the ceiling ever moves.
+
+## D2. Traffic / NPC smoothing sweep
+
+**Status.** The last unexplored corner of the frame-rate-dependence work.
+
+Time advancement is verified frame-rate correct, and camera, steering,
+suspension and chassis damping have all been converted to continuous-time
+exponential decay. Traffic and NPC motion have **not** been audited for
+per-frame interpolation constants of the form `current += (target - current) * k`.
+
+This class of bug is invisible to every timing measurement we have - it does not
+change total simulated time, only the rate at which a value converges - so it
+must be found by reading code, not by instrumenting.
+
+**Resume here:**
+- [ ] Audit traffic and NPC update paths for per-frame smoothing constants.
+- [ ] Fix pattern: replace constant `k` with `1 - pow(1 - k, dt * 30)`, or
+      `k * dt * 30` for small `k`. 30 is the design point.
+- [ ] Sweep the wider engine for remaining per-frame interpolations.
+- [ ] **Do not hook shared lerp helpers.** `sub_8231D3A8` is shared by cockpit
+      view, wheel animation, speedometer and HUD; hooking it broke all four.
+      Hook the specific caller instead.
+
+## D3. `PM4_DRAW_INDX_2` backend failure
+
+**Symptom.** Roughly 3 occurrences per session in the GPU log:
+
+```
+[error] [gpu] Resolve region is empty
+[error] [gpu] PM4_DRAW_INDX_2(3, 8, 2): Failed in backend
+              (major_mode=0, explicit_major=0, path_select=0, tess_mode=1, edram_mode=6)
+```
+
+A draw call is rejected outright by the backend. Notable because it is the only
+**specific**, identifiable rendering error we have - everything else in the
+visual-artifact bucket (car reflections, dithered alpha, occasional HUD
+glitches) is attributed generically to the `xenos` plugin lacking the rendering
+fixes xenia-edge carries.
+
+`tess_mode=1` means tessellation is involved, which narrows the candidate draws
+considerably.
+
+**Resume here:**
+- [ ] Find a reliable repro - identify what is on screen when it fires.
+- [ ] Determine whether the rejected draw is visible content or something
+      discarded anyway (3 occurrences per session suggests a specific object or
+      effect, not a continuous failure).
+- [ ] Likely outcome is the same as the other rendering issues: a prebuilt-DLL
+      limitation with no source access. Worth confirming rather than assuming,
+      since unlike the others this one has an exact signature to search for.
