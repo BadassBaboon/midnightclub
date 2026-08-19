@@ -863,3 +863,43 @@ considerably.
 - [ ] Likely outcome is the same as the other rendering issues: a prebuilt-DLL
       limitation with no source access. Worth confirming rather than assuming,
       since unlike the others this one has an exact signature to search for.
+
+---
+
+## CODE AUDIT - 2026-08-20
+
+Full read-through of everything written during this effort.
+
+### Verified correct (checked against the binary, not assumed)
+
+| item | evidence |
+|---|---|
+| `MCLAChassisDepthSmoothing` site `0x82563720` | Merge point of two branches loading `0x82004288` = **0.10** and `0x82003A90` = **0.05** - exactly the 30/60 FPS damping constants the comment claims. `f0` is the coefficient, consumed by `fmuls f12,f0,f13` two instructions later |
+| `mcDofObject::coc_vector` at `+0xF0` | Taken by address (`addi r29,r31,0xF0`) and uploaded as a 16-byte float4 shader constant. Verified previously |
+| Camera / chassis smoothing rate-invariance | Exponential decay compounds: applying `1-(1-k)^(30*dt)` across passes whose dt sums to S gives `(1-k)^(30*S)` regardless of pass count. Holds even though these run **inside** the substep loop where `[r3+8]` is the per-pass delta |
+| Struct offsets | 21 `static_assert`s, verification status recorded per struct |
+| Metrics after the atomics refactor | SIM RATE back to 2.00-2.01x, `r24=2` / 3 passes per frame, accumulators advancing |
+
+### Defects found and fixed
+
+| # | defect | severity |
+|---|---|---|
+| 1 | **Data races on every instrumentation counter.** `g_fixedstep_hits`, `g_substep_last/min/max/sum/n`, `g_sim_time_sum`, `g_sim_iters` were plain globals written from hook bodies that are **not** thread-bound - unlike `RecordFrameTime`/`LimitFrameRate`, which are. `sub_821BDA90` has two callers with no guarantee they share a thread. The min/max updates were also read-modify-write races independent of the thread question. All are now relaxed atomics, with compare-exchange loops for min/max. Undefined behaviour, in practice benign, now correct |
+| 2 | **Unreachable clamp** in both camera hooks: `if (k30 >= 1.0) k30 = 0.999;` cannot fire, because `raw_k < 1.0` forces `k30 < 0.5`. Dead code implying a guard that was never active. Removed |
+| 3 | **Camera hooks were byte-identical duplicates.** Collapsed into one `ApplyCameraSmoothing` helper; the two hooks are now one-line forwarders |
+| 4 | `g_sim_time_sum` was a `double`, which has no lock-free atomic `fetch_add`. Changed to an integer microsecond accumulator - finer than the metric needs and lock-free |
+
+### Not a defect, but recorded
+
+- **The symbol resolver has no call sites.** `mcla_symbol_resolver.h` compiles
+  (included via `mcla_rage_types.h`) but `ResolveJenkinsHash`,
+  `FormatJenkinsHash` and `SymbolResolver::Instance()` are never invoked, so
+  `MCLA_RESOLVE_SYMBOLS` has no observable effect. The README listed it under
+  "What Works" as a shipped feature; corrected to describe it as library code
+  awaiting a consumer. Either wire it into a diagnostic or drop it.
+- **Camera/chassis absolute calibration is empirical.** The `30.0` multiplier is
+  tuned against how the 30 FPS build feels, not derived from a verified pass
+  count. Rate-invariance is mathematically guaranteed; matching the console
+  curve exactly is not. `MCLA_CAMERA_SMOOTH_SCALE` exists to nudge it.
+- The SIGABRT handler calls `SymInitialize`/`fprintf`, which are not
+  async-signal-safe. Standard practice for a crash-dump aid, left as is.

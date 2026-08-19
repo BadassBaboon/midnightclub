@@ -21,7 +21,7 @@ Static recompilation converts the original Xbox 360 PowerPC (PPC) bytecode in th
 - **60+ FPS Vehicle Chassis Suspension Damping** - continuous-time roll/pitch and ground depth damping (`MCLAChassisDepthSmoothing`) guarantees authentic suspension response at all framerates
 - **513 Script Native Commands Recompiled** - exhaustive binary sweep marked and compiled all 513 script native commands (HUD, UI, Warper, Message Boxes, Race Logic, Grid Spawning, Car Controls, Garage Customizers, GPS) into direct native C++ functions (0 script stub fallbacks)
 - **RAGE Typed Architecture** - strongly-typed, big-endian structures (`mcla_rage_types.h`) derived from CodeX (`RSC5`) replacing fragile byte offsets
-- **RAGE Jenkins Hash Symbol Diagnostics** - zero-overhead asset and symbol resolver (`mcla_symbol_resolver.h`) indexing 146,000+ engine strings
+- **RAGE Jenkins Hash Utilities** - `atStringHash` / `atStringHashConst` and a symbol resolver (`mcla_symbol_resolver.h`) that maps RAGE hashes back to asset names. Currently **library code with no call sites** - it compiles in but nothing invokes it yet, so `MCLA_RESOLVE_SYMBOLS` has no observable effect until a diagnostic uses it.
 - **Hardware Cache Flush Bypass** - eliminates millions of redundant PowerPC `dcbf`/`dcbst` cache loop iterations during world streaming
 - **City LOD Draw Distance Scaling** - reduces distant high-poly building vertex load in dense Downtown areas by 25%
 - **Dynamic Ambient Density Tuning** - halves pedestrian crowds, moving traffic, and roadside parked cars to prevent streaming freezes
