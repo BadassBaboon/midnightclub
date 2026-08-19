@@ -1,11 +1,11 @@
-# Midnight Club: Los Angeles - Static Recompilation
+# Midnight Club: Los Angeles - Lightweight Static Recompilation
 
-A static recompilation of **Midnight Club: Los Angeles (Complete Edition)** for Xbox 360, targeting Windows x86-64. Built with the [rexGlu SDK](https://github.com/rexglue/rexglue) as a compilers class project.
+A lightweight static recompilation of **Midnight Club: Los Angeles (Complete Edition)** for Xbox 360, targeting Windows x86-64. Built with the [rexGlu SDK](https://github.com/rexglue/rexglue) as a compilers class project.
 
 Static recompilation converts the original Xbox 360 PowerPC (PPC) bytecode in the game's `.xex` executable into native C++ that compiles and runs directly on a modern PC - no emulator, no interpreter. The game's kernel calls (file I/O, GPU commands, audio, threading) are handled by the rexGlu runtime.
 
 > [!NOTE]
-> **Project Philosophy**: This project focuses strictly on **maximum execution performance, zero bloat, and an authentic 1:1 original console gameplay experience** on modern PC hardware. Unlike alternative forks (such as LARecomp) that introduce non-standard gameplay modifications, auxiliary background polling loops, or heavy runtime hooks, all optimizations here are minimal, precision mid-asm hooks and native recompilation hints running on the pure ReXGlue 0.9.0 engine.
+> This project focuses strictly on **maximum execution performance, zero bloat, and an authentic 1:1 original console gameplay experience** on modern PC hardware at 60+ FPS. Unlike alternative forks (such as LARecomp) that introduce non-standard gameplay modifications, auxiliary background polling loops, or heavy runtime hooks, all optimizations here are minimal, precision mid-asm hooks and native recompilation hints running on the pure ReXGlue engine.
 
 ---
 
@@ -17,7 +17,6 @@ Static recompilation converts the original Xbox 360 PowerPC (PPC) bytecode in th
 - Free roam, garage, and race selection are fully functional
 - **Correct game speed and physics** - the original 2x-at-high-framerate bug is fixed
 - **Smooth frame pacing** - the 15.625 ms frame-time grid that caused constant micro-stutter is gone, giving continuous presentation
-- **60 FPS Intro Movie Pacing** - `Hook_IntroHalfRate` at `0x821F99DC` restores exact 1.0x normal speed playback for intro BIK/SWF movies at 60 FPS
 - **60+ FPS Chase Camera Continuous-Time Smoothing** - continuous exponential decay damping calibrated to 30 FPS console reference curve eliminates camera jitter and braking/turning snap
 - **60+ FPS Vehicle Chassis Suspension Damping** - continuous-time roll/pitch and ground depth damping (`MCLAChassisDepthSmoothing`) guarantees authentic suspension response at all framerates
 - **513 Script Native Commands Recompiled** - exhaustive binary sweep marked and compiled all 513 script native commands (HUD, UI, Warper, Message Boxes, Race Logic, Grid Spawning, Car Controls, Garage Customizers, GPS) into direct native C++ functions (0 script stub fallbacks)
@@ -246,3 +245,11 @@ and implemented in `src/midnightclub_hooks.cpp`. Codegen emits a call at that
 guest address. The function signature takes **only the registers named in
 `registers`, by reference**, with ordinary C++ linkage - not `extern "C"`, and
 not `(ctx, base)`. Returning `bool` drives `jump_address_on_true`.
+
+---
+
+## Credits & Acknowledgments
+
+- **[Foxxyyy](https://github.com/Foxxyyy)**: Outstanding reverse-engineering work on **[CodeX](https://github.com/Foxxyyy)** (`CodeX.Games.MCLA`), providing the RAGE `RSC5` resource format specifications, type layouts, string databases, and data structures that made the typed architecture and symbol resolver in this project possible.
+- **[ReXGlue Team](https://github.com/rexglue/rexglue)**: The Xbox 360 static recompilation toolkit and runtime.
+- **Rockstar San Diego**: The original developers and creators of Midnight Club: Los Angeles.
