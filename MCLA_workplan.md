@@ -553,3 +553,56 @@ vendoring that one is legitimate and would improve non-Xbox pad support.
   accumulator resets (`-98/s`). It now only flags a genuine near-zero stall.
 - `logs/effective_config.txt` now covers all 30 env vars; README env table is
   verified in sync with `getenv` calls in `src/`.
+
+---
+
+## AUDIT - 2026-08-19 (third pass)
+
+### Shipped: gamecontrollerdb.txt
+
+603 KB / 2,270 mappings from https://github.com/mdqinc/SDL_GameControllerDB
+(zlib, freely redistributable - unlike the CodeX strings file). Vendored in
+`assets/`, copied next to the exe by a CMake POST_BUILD step. Verified:
+`SDL GameControllerDB: loaded 575 mappings.` The boot warning is gone.
+
+### UNVERIFIED OFFSET: mcDofObject::coc_vector at +0xF0
+
+`Patch_DofComposite` writes 16 zero bytes to `+0xF0` of the object in r3 at
+`0x8260EBB8`, **every frame, enabled by default**. But that function never
+touches `+0xF0`:
+
+```
+r31 offsets accessed by sub_8260EBB8:
+  12, 40, 44, 64, 68, 72, 88, 92, 128, 140, 148, 156, 168, 172, 180,
+  296, 312, 316, 344, 1496, ... up to 21664
+  -> 240 (0xF0) does NOT appear
+```
+
+The object is ~21 KB, so `+0xF0` is comfortably in bounds - we are not
+scribbling outside the allocation. But nothing justifies the claim that it is
+the Circle of Confusion vector, because the function we hooked never reads it.
+
+Empirically DoF *does* appear disabled and image clarity improves, so the write
+is doing something - or the improvement comes from elsewhere and this write is
+inert. Both are consistent with the evidence and we cannot currently tell them
+apart.
+
+This is the same bug class as `parked_factor` (+0x9C, never written by its
+constructor, silently scaled nothing for the life of the feature). Guest struct
+offsets fail silently. Two unexplained one-off glitches are on record (audio
+blowout, white HUD) and an unjustified per-frame 16-byte write is exactly the
+kind of thing that produces them.
+
+- [ ] Find which function actually reads `+0xF0` on this object, and confirm it
+      is DoF-related. `xrefs` on the field, or a write-watch, would settle it.
+- [ ] Until then, treat `MCLA_DISABLE_DOF` as unverified. If a repro for either
+      one-off glitch ever appears, test with `MCLA_DISABLE_DOF=0` first.
+- [ ] Add `static_assert`s to the remaining structs once their offsets are
+      confirmed. Only `mcAmbientDensityTuning` is asserted today.
+
+### Verified clean this pass
+
+- All 19 hooks land after `rexglue codegen`; build clean.
+- `stubs.txt` empty across sessions; 0 `FAIL` flags in `effective_config.txt`.
+- No absolute paths outside comments.
+- README env table verified in sync with `getenv` calls in `src/`.
