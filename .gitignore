@@ -19,13 +19,13 @@ stdout.txt
 # that it is worth catching them anywhere in the tree.
 timing_*.log
 effective_config*.txt
-*.json
-!CMakePresets.json
-!launch.vs.json
-!.vscode/launch.json
-!.vscode/tasks.json
-*.txt
-!README.md
+# Do NOT use bare *.txt / *.json here. Those rules silently swallow any new
+# data or config file anyone adds - CMakeLists.txt only survived because it was
+# already tracked when the rule was introduced. List the actual artefacts.
+stubs.txt
+crash_stack.txt
+logs/
+scratch/
 
 
 # Snapshot taken before migrating hand-edits in generated/ to [[midasm_hook]].
