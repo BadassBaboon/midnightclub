@@ -606,3 +606,68 @@ kind of thing that produces them.
 - `stubs.txt` empty across sessions; 0 `FAIL` flags in `effective_config.txt`.
 - No absolute paths outside comments.
 - README env table verified in sync with `getenv` calls in `src/`.
+
+---
+
+## Audio jitter in dense areas - investigation
+
+**Symptom:** crackling / jittery audio, worst in the first-person cockpit
+camera, on tyre skid loops, and in dense areas. Reported originally as the
+reason `mc_FlushDataCache` was removed from the project.
+
+### Both obvious explanations ruled out by testing
+
+Two candidates both predicted "worse in dense areas", so they were confounded
+and had to be separated by holding one variable fixed at a time:
+
+| test | varies | result |
+|---|---|---|
+| A: `MCLA_CACHE_FENCE=0` vs default | memory ordering, load constant | **no audible difference** |
+| B: traffic/ped density 0.1 vs default | CPU load, ordering constant | **no audible difference** |
+
+- **Not memory ordering.** A `seq_cst` fence in `mc_FlushDataCache` changed
+  nothing either way. The theory was that `dcbf` acts as a publication point for
+  the XMA Decoder / Audio Worker threads; plausible, but not what is happening.
+  The fence is cheap and harmless, so it stays - but it is not the fix and must
+  not be recorded as one.
+- **Not general CPU starvation.** Cutting simulation load by 90% at the same
+  location did not help. That is a strong result: it means the audio problem is
+  not simply "the main thread is busy".
+
+So `mc_FlushDataCache` is **innocent** of the audio issue. The reason it was
+originally removed does not hold up. It is measured as the single largest CPU
+saving in the project (~540k avoided 128-byte line ops/sec mean, ~1.88M peak)
+and should be kept.
+
+### Current hypothesis: audio pipeline headroom
+
+What survives the two tests is the audio subsystem's own capacity, not the CPU
+feeding it. The symptom profile supports this - it is worst exactly where the
+number of simultaneous voices and the amount of per-voice DSP peaks:
+
+- cockpit camera adds reverb + occlusion/muffling processing per voice
+- tyre skid loops are continuous, pitch-modulated sources
+- dense areas maximise concurrent event count
+
+rexglue exposes one relevant knob, confirmed registered
+(`?FLAGS_audio_maxqframes_storage_` is exported):
+
+```
+audio_maxqframes   "Max buffered audio frames (range 4-64).
+                    Lower reduces latency but may cause stuttering."
+```
+
+**Measured default: 8** (of a 4-64 range) - plenty of headroom.
+
+- [x] Wired up as `MCLA_AUDIO_QFRAMES`, left at the engine default so the
+      baseline is recorded in `effective_config.txt` before tuning.
+- [ ] Sweep 8 (control) -> 16 -> 32 in a dense area with the cockpit camera and
+      deliberate tyre skids. Higher buffering trades latency for stability; find
+      the lowest value that removes the jitter rather than jumping to 64.
+- [ ] If even 64 does not help, the ceiling is the XMA decoder or the mixer
+      itself, neither of which rexglue exposes - at which point this becomes a
+      known limitation rather than a tuning problem.
+
+Note `audio_frame_latency_us` and `audio_service_type` also appear in the
+runtime binary but are not confirmed as settable cvars; only `audio_maxqframes`
+and `audio_mute` have exported flag storage symbols.
