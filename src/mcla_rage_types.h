@@ -151,6 +151,63 @@ struct mcCity {
   uint32_t GetSectorsArrayPtr() const { return ReadBEUInt32(reinterpret_cast<const uint8_t*>(&sectors_arr_ptr)); }
 };
 
+// ---------------------------------------------------------------------------
+// RAGE Texture System & Formats (RSC5 Rsc5Texture.cs)
+// ---------------------------------------------------------------------------
+
+enum class grcTextureFormat : uint32_t {
+  D3DFMT_L8       = 2,
+  D3DFMT_DXT1     = 82,  // BC1 - Standard diffuse with 1-bit alpha
+  D3DFMT_DXT3     = 83,  // BC2 - Explicit alpha
+  D3DFMT_DXT5     = 84,  // BC3 - Interpolated alpha
+  D3DFMT_CTX1     = 113, // 3Dc / ATI2N / CTX1 - Xbox 360 two-channel normal maps
+  D3DFMT_A8R8G8B8 = 134  // 32-bit uncompressed RGBA
+};
+
+// rage::grcTexture / Rsc5Texture
+// Texture descriptor mapping into Xenos memory and D3D resources
+struct grcTexture {
+  uint32_t vtable;             // +0x00 (0) - 0x82516D84
+  uint32_t unk_04;             // +0x04 (4)
+  uint32_t unk_08;             // +0x08 (8)
+  uint32_t unk_0c;             // +0x0C (12)
+  uint32_t unk_10;             // +0x10 (16)
+  uint32_t unk_14;             // +0x14 (20)
+  uint32_t name_ptr;           // +0x18 (24) - Pointer to ASCII / DDS name
+  uint32_t d3d_base_ptr;       // +0x1C (28) - Pointer to D3DBaseTexture block
+  uint16_t width;              // +0x20 (32) - Texture pixel width
+  uint16_t height;             // +0x22 (34) - Texture pixel height
+  uint16_t stride;             // +0x24 (36) - Row stride in bytes
+  uint8_t  texture_type;       // +0x26 (38) - 0 = 2D, 1 = Cube, 3 = Volume
+  uint8_t  mip_levels;         // +0x27 (39) - Mipmap count
+  float    color_exp_r;        // +0x28 (40)
+  float    color_exp_g;        // +0x2C (44)
+  float    color_exp_b;        // +0x30 (48)
+  float    color_ofs_r;        // +0x34 (52)
+  float    color_ofs_g;        // +0x38 (56)
+  float    color_ofs_b;        // +0x3C (60)
+
+  uint16_t GetWidth() const { return std::byteswap(width); }
+  uint16_t GetHeight() const { return std::byteswap(height); }
+  uint16_t GetStride() const { return std::byteswap(stride); }
+};
+
+// rage::pgDictionary<rage::grcTexture> / Rsc5TextureDictionary
+// Container holding hashed texture entries and pointer array (.xtd / .xtl)
+struct pgTextureDictionary {
+  uint32_t vtable;             // +0x00 (0)
+  uint32_t parent_dict_ptr;    // +0x04 (4)
+  uint32_t usage_count;        // +0x08 (8)
+  uint32_t hashes_arr_ptr;     // +0x0C (12) - Array of JenkHash identifiers
+  uint32_t hashes_count;       // +0x10 (16)
+  uint32_t textures_arr_ptr;   // +0x14 (20) - Array of pointers to grcTexture
+  uint32_t textures_count;     // +0x18 (24)
+
+  uint32_t GetTextureCount() const { return ReadBEUInt32(reinterpret_cast<const uint8_t*>(&textures_count)); }
+  uint32_t GetHashesArrayPtr() const { return ReadBEUInt32(reinterpret_cast<const uint8_t*>(&hashes_arr_ptr)); }
+  uint32_t GetTexturesArrayPtr() const { return ReadBEUInt32(reinterpret_cast<const uint8_t*>(&textures_arr_ptr)); }
+};
+
 // Known Global Memory Addresses in MCLA
 constexpr uint32_t kCityManagerGlobalPtr   = 0x827E0DC8;
 constexpr uint32_t kBaseLodDistanceAddr    = 0x827E0DE0; // float: 300.0f stock
@@ -158,3 +215,4 @@ constexpr uint32_t kActiveLodDistanceAddr  = 0x827E0E50; // float: dynamic scale
 constexpr uint32_t kLodSpeedScaleAddr      = 0x827E0DEC; // float: velocity-interpolated factor
 
 } // namespace rage
+

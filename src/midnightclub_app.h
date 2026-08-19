@@ -139,14 +139,16 @@ class MidnightclubApp : public rex::ReXApp {
     SetFlag(phase, "gpu_allow_invalid_fetch_constants",
             (fetch && *fetch) ? fetch : "true");
 
+    // BadassBaboon's Recomp Adjustments: Increased texture cache limits (1536MB soft / 2048MB hard / 64MB RTT)
+    // to prevent premature eviction of CTX1 normal maps and sector texture dictionaries during high-speed driving.
     const char* tex_soft = getenv("MCLA_TEX_SOFT");
-    SetFlag(phase, "texture_cache_memory_limit_soft", (tex_soft && *tex_soft) ? tex_soft : "768");
+    SetFlag(phase, "texture_cache_memory_limit_soft", (tex_soft && *tex_soft) ? tex_soft : "1536");
 
     const char* tex_hard = getenv("MCLA_TEX_HARD");
-    SetFlag(phase, "texture_cache_memory_limit_hard", (tex_hard && *tex_hard) ? tex_hard : "1024");
+    SetFlag(phase, "texture_cache_memory_limit_hard", (tex_hard && *tex_hard) ? tex_hard : "2048");
 
     const char* tex_rtt = getenv("MCLA_TEX_RTT");
-    SetFlag(phase, "texture_cache_memory_limit_render_to_texture", (tex_rtt && *tex_rtt) ? tex_rtt : "24");
+    SetFlag(phase, "texture_cache_memory_limit_render_to_texture", (tex_rtt && *tex_rtt) ? tex_rtt : "64");
 
     const char* tiled = getenv("MCLA_TILED_SHARED");
     SetFlag(phase, "d3d12_tiled_shared_memory", (tiled && *tiled) ? tiled : "false");
