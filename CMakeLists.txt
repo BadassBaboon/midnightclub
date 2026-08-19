@@ -25,3 +25,20 @@ else()
 endif()
 
 rexglue_setup_target(midnightclub GPU_PLUGINS xenos)
+
+# Ship the SDL controller mapping database next to the executable.
+#
+# SDL looks for 'gamecontrollerdb.txt' in the working directory and logs
+# "GameControllerDB: file 'gamecontrollerdb.txt' does not exist." on every boot
+# without it. The file is zlib-licensed and freely redistributable
+# (https://github.com/mdqinc/SDL_GameControllerDB), so vendoring it is fine -
+# unlike the CodeX strings dictionary, which has no LICENSE and is therefore
+# fetched by the user instead.
+#
+# Copied post-build rather than configure-time so it tracks edits to the source
+# file without needing a reconfigure.
+add_custom_command(TARGET midnightclub POST_BUILD
+    COMMAND ${CMAKE_COMMAND} -E copy_if_different
+            "${CMAKE_CURRENT_SOURCE_DIR}/assets/gamecontrollerdb.txt"
+            "$<TARGET_FILE_DIR:midnightclub>/gamecontrollerdb.txt"
+    COMMENT "Copying gamecontrollerdb.txt next to midnightclub.exe")
