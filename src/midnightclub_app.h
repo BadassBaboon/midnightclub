@@ -231,6 +231,17 @@ class MidnightclubApp : public rex::ReXApp {
                             "MCLA_ALLOW_INVALID_FETCH", "MCLA_SUBSTEPS",
                             "MCLA_RT_PATH", "MCLA_RESOLUTION_SCALE",
                             "MCLA_TEX_SOFT", "MCLA_TEX_HARD", "MCLA_TEX_RTT", "MCLA_TILED_SHARED",
+                            // Gameplay / rendering knobs. These were missing from
+                            // the dump, which made "did my setting apply?" -
+                            // the entire reason this file exists - unanswerable
+                            // for exactly the settings most likely to be wrong.
+                            "MCLA_SKIP_INTRO", "MCLA_LOD_CITY_SCALE",
+                            "MCLA_CAMERA_SMOOTH_SCALE",
+                            "MCLA_TRAFFIC_DENSITY_SCALE", "MCLA_PED_DENSITY_SCALE",
+                            "MCLA_PARKED_CAR_SCALE", "MCLA_TRAFFIC_UNSPAWN_MAX",
+                            "MCLA_DISABLE_DOF", "MCLA_DISABLE_MSAA",
+                            "MCLA_DISABLE_MOTION_BLUR", "MCLA_DISABLE_IMPOSTER_SHADOWS",
+                            "MCLA_RESOLVE_SYMBOLS",
                             "REX_LOG_LEVEL"}) {
         const char* v = getenv(e);
         fprintf(f, "%-46s = %s\n", e, v ? v : "<not set>");
