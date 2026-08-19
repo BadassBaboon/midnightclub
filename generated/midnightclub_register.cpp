@@ -4093,6 +4093,8 @@ void midnightclub_RegisterFunctions(rex::runtime::IModuleRegistrar* registrar) {
   registrar->SetFunction(0x8220B6E8, sub_8220B6E8);
   registrar->SetFunction(0x8220B730, sub_8220B730);
   registrar->SetFunction(0x8220B790, sub_8220B790);
+  registrar->SetFunction(0x8220B7D0, sub_8220B7D0);
+  registrar->SetFunction(0x8220B810, sub_8220B810);
   registrar->SetFunction(0x8220B838, sub_8220B838);
   registrar->SetFunction(0x8220B880, sub_8220B880);
   registrar->SetFunction(0x8220B898, sub_8220B898);
@@ -4145,9 +4147,11 @@ void midnightclub_RegisterFunctions(rex::runtime::IModuleRegistrar* registrar) {
   registrar->SetFunction(0x8220D970, sub_8220D970);
   registrar->SetFunction(0x8220D9E8, sub_8220D9E8);
   registrar->SetFunction(0x8220DA30, sub_8220DA30);
+  registrar->SetFunction(0x8220DA40, sub_8220DA40);
   registrar->SetFunction(0x8220DA50, sub_8220DA50);
   registrar->SetFunction(0x8220DA70, sub_8220DA70);
   registrar->SetFunction(0x8220DA80, sub_8220DA80);
+  registrar->SetFunction(0x8220DAA0, sub_8220DAA0);
   registrar->SetFunction(0x8220DAB8, sub_8220DAB8);
   registrar->SetFunction(0x8220DAE4, sub_8220DAE4);
   registrar->SetFunction(0x8220DAE8, sub_8220DAE8);
@@ -5501,6 +5505,7 @@ void midnightclub_RegisterFunctions(rex::runtime::IModuleRegistrar* registrar) {
   registrar->SetFunction(0x8225BDB0, sub_8225BDB0);
   registrar->SetFunction(0x8225BE48, sub_8225BE48);
   registrar->SetFunction(0x8225BED8, sub_8225BED8);
+  registrar->SetFunction(0x8225BEE8, sub_8225BEE8);
   registrar->SetFunction(0x8225BF60, sub_8225BF60);
   registrar->SetFunction(0x8225BFD8, sub_8225BFD8);
   registrar->SetFunction(0x8225C060, sub_8225C060);
@@ -18585,10 +18590,12 @@ void midnightclub_RegisterFunctions(rex::runtime::IModuleRegistrar* registrar) {
   registrar->SetFunction(0x82553E70, sub_82553E70);
   registrar->SetFunction(0x82553F20, sub_82553F20);
   registrar->SetFunction(0x82553F40, sub_82553F40);
+  registrar->SetFunction(0x82553F88, sub_82553F88);
   registrar->SetFunction(0x82553FB0, sub_82553FB0);
   registrar->SetFunction(0x82553FE0, sub_82553FE0);
   registrar->SetFunction(0x82553FF0, sub_82553FF0);
   registrar->SetFunction(0x82554040, sub_82554040);
+  registrar->SetFunction(0x82554060, sub_82554060);
   registrar->SetFunction(0x82554080, sub_82554080);
   registrar->SetFunction(0x825540A0, sub_825540A0);
   registrar->SetFunction(0x825540C0, sub_825540C0);
@@ -18611,6 +18618,7 @@ void midnightclub_RegisterFunctions(rex::runtime::IModuleRegistrar* registrar) {
   registrar->SetFunction(0x82554468, sub_82554468);
   registrar->SetFunction(0x82554490, sub_82554490);
   registrar->SetFunction(0x825544A0, sub_825544A0);
+  registrar->SetFunction(0x825544E4, sub_825544E4);
   registrar->SetFunction(0x82554500, sub_82554500);
   registrar->SetFunction(0x82554590, sub_82554590);
   registrar->SetFunction(0x82554630, sub_82554630);

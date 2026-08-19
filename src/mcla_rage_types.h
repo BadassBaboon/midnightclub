@@ -6,6 +6,7 @@
 #include <cstdint>
 #include <bit>
 #include <cstring>
+#include "mcla_symbol_resolver.h"
 
 namespace rage {
 

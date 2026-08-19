@@ -53606,11 +53606,17 @@ DEFINE_REX_FUNC(sub_82553F40) {
 	// cmpwi cr6,r11,0
 	ctx.cr6.compare<int32_t>(ctx.r11.s32, 0, ctx.xer);
 	// bne cr6,0x82553f88
-	if (!ctx.cr6.eq) goto loc_82553F88;
+	if (!ctx.cr6.eq) {
+		sub_82553F88(ctx, base);
+		return;
+	}
 	// cmpwi cr6,r5,0
 	ctx.cr6.compare<int32_t>(ctx.r5.s32, 0, ctx.xer);
 	// bne cr6,0x82553f88
-	if (!ctx.cr6.eq) goto loc_82553F88;
+	if (!ctx.cr6.eq) {
+		sub_82553F88(ctx, base);
+		return;
+	}
 	// stfd f1,24(r1)
 	ctx.fpscr.disableFlushMode();
 	REX_STORE_U64(ctx.r1.u32 + 24, ctx.f1.u64);
@@ -53631,7 +53637,10 @@ DEFINE_REX_FUNC(sub_82553F40) {
 	ctx.lr = ctx.r12.u64;
 	// blr 
 	return;
-loc_82553F88:
+}
+
+DEFINE_REX_FUNC(sub_82553F88) {
+	REX_FUNC_PROLOGUE();
 	// stfd f1,40(r1)
 	ctx.fpscr.disableFlushMode();
 	REX_STORE_U64(ctx.r1.u32 + 40, ctx.f1.u64);
@@ -53762,6 +53771,30 @@ DEFINE_REX_FUNC(sub_82554040) {
 	ctx.fpscr.disableFlushMode();
 	temp.u32 = REX_LOAD_U32(ctx.r11.u32 + 0);
 	ctx.f1.f64 = double(temp.f32);
+	// lwz r9,4348(r10)
+	ctx.r9.u64 = REX_LOAD_U32(ctx.r10.u32 + 4348);
+	// mtctr r9
+	ctx.ctr.u64 = ctx.r9.u64;
+	// bctr 
+	REX_CALL_INDIRECT_FUNC(ctx.ctr.u32);
+	return;
+}
+
+DEFINE_REX_FUNC(sub_82554060) {
+	REX_FUNC_PROLOGUE();
+	PPCRegister temp{};
+	// lwz r11,8(r3)
+	ctx.r11.u64 = REX_LOAD_U32(ctx.r3.u32 + 8);
+	// lis r10,-32127
+	ctx.r10.s64 = -2105475072;
+	// lfs f1,8(r11)
+	ctx.fpscr.disableFlushMode();
+	temp.u32 = REX_LOAD_U32(ctx.r11.u32 + 8);
+	ctx.f1.f64 = double(temp.f32);
+	// lwz r4,4(r11)
+	ctx.r4.u64 = REX_LOAD_U32(ctx.r11.u32 + 4);
+	// lwz r3,0(r11)
+	ctx.r3.u64 = REX_LOAD_U32(ctx.r11.u32 + 0);
 	// lwz r9,4348(r10)
 	ctx.r9.u64 = REX_LOAD_U32(ctx.r10.u32 + 4348);
 	// mtctr r9
@@ -54502,7 +54535,10 @@ DEFINE_REX_FUNC(sub_825544A0) {
 	// cmplwi cr6,r3,0
 	ctx.cr6.compare<uint32_t>(ctx.r3.u32, 0, ctx.xer);
 	// beq cr6,0x825544e4
-	if (ctx.cr6.eq) goto loc_825544E4;
+	if (ctx.cr6.eq) {
+		sub_825544E4(ctx, base);
+		return;
+	}
 	// lwz r3,8(r31)
 	ctx.r3.u64 = REX_LOAD_U32(ctx.r31.u32 + 8);
 	// bl 0x825578b8
@@ -54520,7 +54556,10 @@ DEFINE_REX_FUNC(sub_825544A0) {
 	ctx.r31.u64 = REX_LOAD_U64(ctx.r1.u32 + -16);
 	// blr 
 	return;
-loc_825544E4:
+}
+
+DEFINE_REX_FUNC(sub_825544E4) {
+	REX_FUNC_PROLOGUE();
 	// lis r11,-32248
 	ctx.r11.s64 = -2113404928;
 	// addi r3,r11,-13608
