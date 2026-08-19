@@ -244,9 +244,10 @@ delta) and `[r3+84]` on `flt_827D7554` (initialised to 1.0 = timescale).
 
 - [x] Added `ACCUM` line to `timing.log` sampling `[r3+20]`, `[r3+24]` and the
       timescale, with a `<-- FROZEN` marker.
-- [ ] **Run and check.** If frozen, this is very likely the BIK root cause and
-      the fix is to keep the accumulator update while still skipping the
-      fixed-timestep overwrite.
+- [x] **Ran and checked - they WERE frozen.** Fixed by moving the hook to
+      0x821BDB58 and adding MCLAFixedStepPath; accumulators now advance
+      +1.01/s. Did NOT fix the BIK movies, which are frame-rate independent
+      and are now a documented limitation (see Phase 3b).
 
 ### Verified correct
 
@@ -276,10 +277,11 @@ Time advancement is correct. Subsystems that updated by a **per-frame constant**
 - [x] Ruled out: present interval (no change, plus shadow flicker).
 - [x] Ruled out: frame rate. Still fast at hard 30, 45 and 60 fps caps - speed
       is *independent* of frame rate, unlike everything else. A separate defect.
-- [ ] Find the movie player's timing path.
-- [ ] Note: the engine supports forced-delta injection via the `f1` argument to
-      `sub_821BDA90`. If the movie player uses a second timer context, that is a
-      likely mechanism and a likely fix point.
+- [x] **CLOSED - WONTFIX.** Pacing is inherent to the 60 FPS unlock; LARecomp
+      shows the same behaviour with the same method. `Hook_IntroHalfRate` was a
+      half-rate counter that is only correct at exactly 60 fps and wrong at every
+      other cap, which is why it was removed. Supported workarounds:
+      `MCLA_SKIP_INTRO=1`, `MCLA_VSYNC=true`, or press A.
 
 ### Phase 4 - city slowdown
 
@@ -661,13 +663,70 @@ audio_maxqframes   "Max buffered audio frames (range 4-64).
 
 - [x] Wired up as `MCLA_AUDIO_QFRAMES`, left at the engine default so the
       baseline is recorded in `effective_config.txt` before tuning.
-- [ ] Sweep 8 (control) -> 16 -> 32 in a dense area with the cockpit camera and
-      deliberate tyre skids. Higher buffering trades latency for stability; find
-      the lowest value that removes the jitter rather than jumping to 64.
-- [ ] If even 64 does not help, the ceiling is the XMA decoder or the mixer
-      itself, neither of which rexglue exposes - at which point this becomes a
-      known limitation rather than a tuning problem.
+- [x] **Swept 8 -> 16 -> 32. No audible difference at any value.** Superseded by
+      the buffer_queue_depth measurement below, which shows the output queue
+      never drains - so buffering was never the constraint.
 
 Note `audio_frame_latency_us` and `audio_service_type` also appear in the
 runtime binary but are not confirmed as settable cvars; only `audio_maxqframes`
 and `audio_mute` have exported flag storage symbols.
+
+### Audio jitter - PARKED, four causes eliminated
+
+`audio_maxqframes` at 16 and 32 made no audible difference either. Adding the
+perf-counter readout then explained why:
+
+```
+perf: queue_depth=8 ... (steady, every second)
+```
+
+`buffer_queue_depth` sits pinned at 8 - exactly `audio_maxqframes`. **The output
+queue is always full and never drains.** The audio device is never starved for
+data, so no amount of extra buffering can help, and output-side starvation is
+ruled out entirely.
+
+Elimination record - each by measurement, none by argument:
+
+| ruled out | how |
+|---|---|
+| memory ordering | `MCLA_CACHE_FENCE=0` vs default, no difference |
+| general CPU starvation | traffic/ped density 0.1, no difference |
+| output buffer depth | `audio_maxqframes` 8 -> 16 -> 32, no difference |
+| output underrun | `buffer_queue_depth` pinned at 8, never drains |
+
+What survives is per-voice DSP or mixing **inside the guest's own audio engine**,
+upstream of the output queue. Consistent with the symptom profile: worst in the
+cockpit camera (per-voice reverb + occlusion), on continuous tyre skid loops,
+and where concurrent voice count peaks.
+
+- [ ] **DEFERRED.** Needs an IDA investigation of the guest audio subsystem, not
+      another cvar sweep. Revisit with the debugger.
+- [ ] Cheap question to answer first: does Xenia exhibit the same crackle in
+      cockpit view in dense traffic? If yes this is an inherited XMA/audio
+      emulation limitation, same category as the lighting, and should be
+      documented rather than chased.
+
+`MCLA_AUDIO_QFRAMES` stays wired (default 8, engine default) - harmless, and
+useful if the ceiling ever moves.
+
+### Perf counters wired in - permanent diagnostic
+
+`rex/perf/counter.h` is exported from the runtime and callable even though the
+CSV auto-writer is compiled out of the shipped DLL. A `perf:` line now appears
+once per second in `timing_*.log` under `MCLA_TIMING_LOG=1`.
+
+Live and useful: `buffer_queue_depth`, `texture_cache_hits/misses`,
+`draw_calls`, `active_threads`.
+Dead in the shipped DLL (always 0, do not read meaning into them):
+`xma_frames_decoded`, `audio_frame_latency_us`, `command_buffer_stalls`,
+`critical_region_contentions`, `apc_queue_depth`.
+
+First results:
+
+- **`texture_cache_hits=1311, misses=0`** - the expanded cache (1536/2048 MB)
+  is fully effective. Zero misses. That avenue is closed, and the Phase 4
+  conclusion is now confirmed by counters rather than inferred from frame times.
+- **`draw_calls` ~3,400-3,700/sec** at ~50 fps = ~70 draws/frame. That is LOW.
+  The dense-area cost is **not** draw-call submission, which points at the
+  recompiled guest code itself (traffic AI, physics, streaming) - consistent
+  with LOD and ambient density tuning being the things that helped.
