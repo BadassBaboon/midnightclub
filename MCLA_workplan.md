@@ -333,6 +333,81 @@ ticks. Whatever remains at 60 fps is Phase 3.
 
 ---
 
+---
+
+## AUDIT - 2026-08-19 (second pass, post-Phase-12)
+
+Re-read the whole tree against this document. The code was in good shape; the
+**documentation was not** - this file described a build that did not exist.
+
+### Documentation claimed six hooks that were not in the tree
+
+All were removed in `9512dc0` ("Fixed up accidental bugs and cleaned up code")
+and `ab31df0`, but Phases 7/9 still listed them as `[DONE]`:
+
+| hook | address | resolution |
+|---|---|---|
+| `mc_FlushDataCache` | `0x821D5510` | **RESTORED**, now instrumented - see below |
+| `SkipIntro` | `0x822C2F08` | **RESTORED** - the supported answer for the BIK issue |
+| `MCLA_SkipIntroRenderPassMask` | `0x821315E4` | **RESTORED** - required whenever the intro is skipped |
+| `Hook_IntroHalfRate` | `0x821F99DC` | **NOT restored** - see BIK decision below |
+| `MCLATurnSpeedTimestep` | `0x822A2ED4` | **NOT restored** - the disproven-hypotheses table already records why scaling here is wrong |
+| `MCLACameraBoomSmoothing` | `0x823203D4` | Correctly superseded by `MCLACameraPosSmoothing` / `MCLACameraLookAtSmoothing` |
+
+### DECISION: the intro BIK movies are a known limitation, not a bug to chase
+
+Playback pacing is tied to the 60 FPS unlock itself. LARecomp exhibits the same
+behaviour with the same unlocking method. `Hook_IntroHalfRate` was a half-rate
+counter that only happened to be right at exactly 60 fps and is wrong at every
+other cap, which is why it went. Supported workarounds: `MCLA_SKIP_INTRO=1`,
+`MCLA_VSYNC=true`, or simply pressing A. Phase 3b is closed as WONTFIX.
+
+### `mc_FlushDataCache` restored, and now measurable
+
+This cannot be A/B tested with a runtime switch: it is a whole-function
+replacement, and the guest body is a `dcbf`/`dcbst` loop that is semantically a
+no-op on x86 (host memory is already coherent). Replacing it is always correct;
+the only open question is whether it is *worth* anything.
+
+So the hook now counts calls and bytes, reported once per second under
+`MCLA_TIMING_LOG=1`:
+
+```
+cache-flush bypass: N calls, X.XX MB (~Y skipped 128B line ops)
+```
+
+Decision rule: if this shows a meaningful volume during streaming, keep it. If
+it is near-zero, delete the hook and this section with it.
+
+### Bugs found and fixed in our own code
+
+| # | Finding | Fix |
+|---|---|---|
+| 1 | `UpdateCityLODMemory` used a one-shot `static bool applied`. The city streamer re-initialises the base LOD global on district/level load, so after the first transition the LOD scaling was silently gone for the rest of the session. | Now verifies the value each frame and rewrites only on mismatch. Survives level transitions. |
+| 2 | `MCLA_SUBSTEPS` accepted `0`, which was measured to leave the player car with no wheels and undriveable. A debug lever shipping unclamped in a release build. | Clamped to `[1, 8]`. |
+| 3 | `.gitignore` contained bare `*.txt` and `*.json`. `CMakeLists.txt` only survived because it predated the rule; any new `.txt`/`.json` would have been silently untracked. | Replaced with explicit artefact patterns. |
+| 4 | 11 of 27 env vars were missing from `logs/effective_config.txt`, including every gameplay/rendering knob (DoF, MSAA, motion blur, LOD, all three density scales, camera scale). The file exists to answer "did my setting apply?" and could not answer it for the settings most likely to be wrong. | All 28 now dumped. |
+| 5 | README documented `MCLA_STEERING_SENSITIVITY`, whose hook was reverted - setting it did nothing, silently. `MCLA_SKIP_INTRO` was documented but unimplemented. | Removed the former; implemented the latter. Env table is now verified in sync with `getenv` calls in `src/`. |
+
+### Verified clean
+
+- All 18 hooks land on their intended instructions after `rexglue codegen`.
+- No duplicate hook addresses, no duplicate `[functions]` entries (570 entries,
+  541 `is_function_start`).
+- RAGE struct accessors in `mcla_rage_types.h` are correctly byte-swapped.
+- Build is clean.
+
+### Still open (not blocking)
+
+- **Hardcoded absolute paths**: `E:/MCLA/MCLA_Game_Files` in `OnConfigurePaths`
+  and `E:/MCLA/CodeX.Games.MCLA/...strings.txt` in the symbol resolver. Nobody
+  else can build and run this without editing source - the single biggest
+  barrier to anyone else trying the project.
+- **Pass 2 stubs ~1.7M addresses at startup** (`0x82130000`-`0x827CD054`, stride
+  4). Measured cold long ago. Worth making opt-in now that the game is stable.
+- `std::printf` in `MCLAAmbientDensityTuning` goes nowhere under `Start-Process`.
+
+
 ## Phase 7: Streaming, Rendering & Ambient Performance Tuning [DONE]
 
 - [DONE] **Hardware Cache Flush Bypass (`mc_FlushDataCache`)**: Hooked `0x821D5510` (`sub_821D5510`) to return `addr` immediately on PC x86_64. On console, this was a `dcbf`/`dcbst` loop executing every 128 bytes on streaming buffers (~2.5 million loop iterations per 2s). Bypassing it eliminates major CPU streaming stalls.

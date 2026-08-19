@@ -128,9 +128,14 @@ For users wanting the exact original 30 FPS console framerate, `MCLA_FPS_CAP=30`
 | `MCLA_PED_DENSITY_SCALE` | `0.5` | Pedestrian spawn density multiplier (`0.0` to `2.0`). Halves sidewalk crowd population. |
 | `MCLA_PARKED_CAR_SCALE` | `0.5` | Roadside parked car density multiplier (`0.0` to `2.0`). Halves parked vehicle counts. |
 | `MCLA_TRAFFIC_UNSPAWN_MAX` | `180.0` | Max traffic unspawn tracking radius (meters). Reduces distant CPU vehicle tracking overhead. |
-| `MCLA_STEERING_SENSITIVITY` | `1.0` | Vehicle steering sensitivity multiplier (`0.1` to `5.0`). Automatically scales with frame rate. |
 | `MCLA_DISABLE_DOF` | `1` (enabled) | Disable full-screen Depth of Field composite passes, saving GPU fill rate and improving clarity. Set to `0` to re-enable DoF blur. |
-| `MCLA_SKIP_INTRO` | `0` (off) | Set to `1` to skip intro legal movies cleanly on boot. |
+| `MCLA_SKIP_INTRO` | `0` (off) | Set to `1` to skip the intro legal movies. Also clears render-pass bit 24, which otherwise leaves an uninitialised pass that corrupts Downtown shaders. |
+| `MCLA_RT_PATH` | auto | eDRAM path: `d3d12_rov` or `d3d12_rtv`. Unset lets the plugin choose. |
+| `MCLA_RESOLUTION_SCALE` | `1` | **Do not change.** `2` breaks race-start cameras and grid spawn transforms. |
+| `MCLA_ALLOW_INVALID_FETCH` | `true` | Allows texture fetches the GPU log flags as invalid. Set `false` if HUD/minimap glitches appear. |
+| `MCLA_CAMERA_SMOOTH_SCALE` | `1.0` | Chase-camera smoothing rate multiplier (`0.1`-`5.0`). |
+| `MCLA_REFRESH_RATE` | `60` | Guest video mode refresh rate. Diagnostic only - does not affect pacing. |
+| `MCLA_SUBSTEPS` | unset | Diagnostic override of the physics substep count (`1`-`8`). Leave alone. |
 | `MCLA_DISABLE_IMPOSTER_SHADOWS` | `1` (enabled) | Bypass tree foliage imposter shadow submission, saving GPU fill rate in Beverly Hills / Hollywood. |
 | `MCLA_DISABLE_MOTION_BLUR` | `0` (off) | Set to `1` to disable camera and per-object motion blur passes. |
 | `MCLA_DISABLE_MSAA` | `0` (off) | Set to `1` to disable hardware MSAA. |
@@ -139,7 +144,6 @@ For users wanting the exact original 30 FPS console framerate, `MCLA_FPS_CAP=30`
 | `MCLA_TEX_RTT` | `64` | GPU texture cache limit for render-to-texture targets (MB). |
 | `MCLA_RESOLVE_SYMBOLS` | `0` (off) | Set to `1` (or run with `REX_LOG_LEVEL=debug`) to enable lazy RAGE Jenkins hash string resolution for diagnostics. Zero overhead when off. |
 | `MCLA_TILED_SHARED` | `false` | Disables tiled shared memory for lower emulation overhead on modern GPUs. |
-| `MCLA_RESOLUTION_SCALE` | `1` | Internal 3D resolution multiplier. **Keep at `1`** - setting to `2` corrupts projection frustum culling and grid spawn transforms. |
 | `MCLA_TIMING_LOG` | off | `1` writes frame-time stats and a 1 ms histogram to `logs/timing_<date>_<time>_cap<N>.log`. |
 | `MCLA_MAX_FRAME_MS` | `125` | Hitch guard: caps the delta a single frame can advance. Clamped to `[16, 1000]`; cannot be disabled. |
 | `MCLA_VSYNC` | `false` | Presentation vsync lock. `false` (default) gives maximum performance throughput (~30% higher framerate). Set to `true` for vsync lock. |
