@@ -472,3 +472,84 @@ it is near-zero, delete the hook and this section with it.
 
 - **Pure Performance & Zero Bloat**: This project strictly targets maximum execution performance and a **1:1 faithful console experience** on modern PC hardware.
 - **Zero Intrusive Modifications**: Unlike other forks that introduce non-standard gameplay alterations, auxiliary background polling threads, or heavy runtime hooks, all optimizations here are minimal, precision mid-asm hooks and native recompilation hints running on the ReXGlue 0.9.0 engine.
+
+---
+
+## Session 2026-08-19 (cont.) - portability, stub sweep, and a silent struct bug
+
+### `mc_FlushDataCache` MEASURED - keep it
+
+Instrumented over an 8.5 minute session (507 samples):
+
+| metric | value |
+|---|---|
+| calls/sec | median 4,976, peak 9,936 |
+| bytes/sec | mean 66 MB/s, peak 229 MB/s |
+| session total | 33.5 GB of flush range |
+| emulated `dcbf` iterations avoided | ~540k/s mean, ~1.88M/s peak |
+
+Largest single CPU saving in the project. Confirmed keeper.
+
+### `mcAmbientDensityTuning` offsets were wrong - MCLA_PARKED_CAR_SCALE did nothing
+
+`pad_18[72]` starts at +0x18, so it ends at +0x60. That put `ped_density` at
++0x60 (comment claimed +0x5C) and `parked_factor` at +0x9C (comment claimed
++0x98). The constructor's last store is `stfs f0, 0x98(r31)` with
+`flt_82008DD0 = 0.25` - nothing is ever written to +0x9C.
+
+`ped_density` got away with it: +0x60 holds `flt_82007F9C = 15.0`, a real
+pedestrian value. `parked_factor` did not - it read uninitialised memory and
+logged `parked_factor=-0.00 (was -0.00)` on every instance, for the entire life
+of the feature. The README advertised halved parked cars that never happened.
+
+Fixed, and every offset is now `static_assert`ed against the constructor:
+
+```
+parked_factor 0.2500 -> 0.1250     (was -0.00 -> -0.00)
+ped_density   15.0000 -> 7.5000
+unspawn_max   400.0 -> 180.0
+spawn_max     180.0 -> 135.0
+cull_max      700.0 -> 525.0
+```
+
+Lesson: guest struct offsets are load-bearing and fail silently - a wrong one
+reads unrelated memory rather than erroring. Assert all of them.
+
+### Stub sweep measured, not removed
+
+`scanned 1733653 addresses, stubbed 1703610, took ~400-500 ms`.
+
+An empty `stubs.txt` proves nothing was *hit*; it does not prove the net is
+unnecessary, because without it an unmapped indirect call becomes a crash rather
+than a logged no-op. Left ON by default, now measured, and skippable with
+`MCLA_NO_STUB_SWEEP=1` for anyone who wants the ~400 ms back.
+
+### Portability - the project now runs on other machines
+
+- Game data: `MCLA_GAME_DATA` env -> `game_data/` -> `MCLA_Game_Files/` walking
+  up 6 levels. A candidate only counts if it contains `default.xex`. Verified
+  resolving with no env var set.
+- Symbol resolver: `MCLA_STRINGS_FILE` env + relative candidates. The absolute
+  `E:/MCLA/...` path is gone.
+- `midnightclub_manifest.toml` uses `../MCLA_Game_Files/default.xex`.
+- No absolute paths remain outside comments.
+
+### On vendoring CodeX data
+
+The strings file is only 3.6 MB and would be convenient to ship, but
+**CodeX.Games.MCLA has no LICENSE file**, so redistribution is not clearly
+permitted. Not vendored. The feature is diagnostics-only and off by default, so
+its absence costs a player nothing. Worth asking the author for permission.
+
+`gamecontrollerdb.txt` IS freely licensed and SDL warns about it every boot -
+vendoring that one is legitimate and would improve non-Xbox pad support.
+
+### Other fixes
+
+- `MCLAAmbientDensityTuning` printed to stdout on every instance (25+ per
+  session, invisible under `Start-Process`). Now logs the first instance only,
+  to `logs/effective_config.txt`.
+- The `FROZEN` accumulator detector false-fired on level transitions, where the
+  accumulator resets (`-98/s`). It now only flags a genuine near-zero stall.
+- `logs/effective_config.txt` now covers all 30 env vars; README env table is
+  verified in sync with `getenv` calls in `src/`.

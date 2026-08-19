@@ -50,20 +50,50 @@ See [`MCLA_workplan.md`](MCLA_workplan.md) for the full investigation log - ever
 
 ### Game Data Setup
 
-Extract the game disc to a folder. The structure should look like:
+Extract the game disc to a folder containing `default.xex`:
 
 ```
-Midnight Club - Los Angeles - Complete Edition (USA, Europe)/
+MCLA_Game_Files/
   default.xex
   xarchive_cache.rpf
   xarchive_audio.rpf
   ...
 ```
 
-Then update the two paths in these files to point at your copy:
+The runtime finds it automatically, first match wins:
 
-- `midnightclub_manifest.toml` - `[entrypoint] file_path` (path to `default.xex`)
-- `src/midnightclub_app.h` - `OnConfigurePaths`, `paths.game_data_root` (the folder containing `default.xex`)
+1. `MCLA_GAME_DATA` environment variable
+2. `game_data/` next to `midnightclub.exe`
+3. `MCLA_Game_Files/` walking up to six levels from the working directory
+
+No source editing required. If none match, the executable prints how to fix it
+and exits cleanly rather than failing obscurely later:
+
+```powershell
+$env:MCLA_GAME_DATA = "D:\games\MidnightClubLA"
+```
+
+For **codegen only**, `midnightclub_manifest.toml` points at
+`../MCLA_Game_Files/default.xex`. That is relative to the repo, so the default
+layout is a `MCLA_Game_Files` folder beside your clone. Change that one line if
+your layout differs - it is only read by `rexglue codegen`, never at runtime.
+
+### Optional developer extras
+
+Neither of these is needed to play:
+
+- **Symbol resolution** (`MCLA_RESOLVE_SYMBOLS=1`) resolves RAGE Jenkins hashes
+  to asset names for diagnostics. It needs `Codex.Games.MCLA.strings.txt` from
+  [CodeX.Games.MCLA](https://github.com/Foxxyyy/CodeX.Games.MCLA). Point
+  `MCLA_STRINGS_FILE` at it, drop it beside the exe, or clone CodeX next to this
+  repo. Without it the resolver simply reports raw hashes.
+
+  It is **not vendored here**: the CodeX repository ships no LICENSE file, so
+  redistributing its contents is not clearly permitted. If that changes, or the
+  author grants permission, vendoring the 3.6 MB file would be worthwhile.
+
+- **`gamecontrollerdb.txt`** next to the exe improves controller mapping for
+  non-Xbox pads. SDL logs a warning without it; it is otherwise harmless.
 
 ---
 
@@ -144,6 +174,9 @@ For users wanting the exact original 30 FPS console framerate, `MCLA_FPS_CAP=30`
 | `MCLA_TEX_RTT` | `64` | GPU texture cache limit for render-to-texture targets (MB). |
 | `MCLA_RESOLVE_SYMBOLS` | `0` (off) | Set to `1` (or run with `REX_LOG_LEVEL=debug`) to enable lazy RAGE Jenkins hash string resolution for diagnostics. Zero overhead when off. |
 | `MCLA_TILED_SHARED` | `false` | Disables tiled shared memory for lower emulation overhead on modern GPUs. |
+| `MCLA_GAME_DATA` | auto-detect | Path to the folder containing `default.xex`. Overrides auto-detection. |
+| `MCLA_STRINGS_FILE` | auto-detect | Path to `Codex.Games.MCLA.strings.txt` for symbol resolution. Optional. |
+| `MCLA_NO_STUB_SWEEP` | `0` | `1` skips stubbing ~1.7M unmapped addresses at startup (~400 ms). Only safe if `stubs.txt` stays empty. |
 | `MCLA_TIMING_LOG` | off | `1` writes frame-time stats and a 1 ms histogram to `logs/timing_<date>_<time>_cap<N>.log`. |
 | `MCLA_MAX_FRAME_MS` | `125` | Hitch guard: caps the delta a single frame can advance. Clamped to `[16, 1000]`; cannot be disabled. |
 | `MCLA_VSYNC` | `false` | Presentation vsync lock. `false` (default) gives maximum performance throughput (~30% higher framerate). Set to `true` for vsync lock. |
