@@ -17,6 +17,7 @@
 //   +88   float   delta, unscaled
 //   +92   float   raw seconds elapsed this frame
 
+#include "mcla_rage_types.h"
 #include <rex/chrono/clock.h>
 #include <rex/hook.h>
 #include <rex/ppc/context.h>
@@ -583,14 +584,19 @@ void Patch_ScaleCityLOD(PPCRegister& f13) {
 //   MCLA_PED_DENSITY_SCALE: float (default 0.5, e.g. 0.5 to halve pedestrian density)
 //   MCLA_PARKED_CAR_SCALE: float (default 0.5, e.g. 0.5 to halve parked car density)
 void MCLAAmbientDensityTuning(PPCRegister& r3) {
-  uint32_t base = r3.u32;
-  if (base == 0) return;
+  uint32_t base_addr = r3.u32;
+  if (base_addr == 0) return;
 
-  float orig_unspawn = ReadGuestFloat(base + 16);
-  float orig_ped_density = ReadGuestFloat(base + 92);
-  float orig_parked_factor = ReadGuestFloat(base + 152);
-  float orig_spawn_max = ReadGuestFloat(base + 8);
-  float orig_cull_max = ReadGuestFloat(base + 20);
+  uint8_t* base = rex::Runtime::instance()->virtual_membase();
+  if (!base) return;
+
+  auto* tuning = reinterpret_cast<rage::mcAmbientDensityTuning*>(base + base_addr);
+
+  float orig_unspawn = tuning->GetUnspawnMax();
+  float orig_ped_density = tuning->GetPedDensity();
+  float orig_parked_factor = tuning->GetParkedFactor();
+  float orig_spawn_max = tuning->GetSpawnMax();
+  float orig_cull_max = tuning->GetCullMax();
 
   float unspawn_val = 180.0f;
   if (const char* e = std::getenv("MCLA_TRAFFIC_UNSPAWN_MAX")) {
@@ -617,27 +623,27 @@ void MCLAAmbientDensityTuning(PPCRegister& r3) {
   }
 
   if (unspawn_val > 0.0f && unspawn_val < orig_unspawn) {
-    WriteGuestFloat(base + 16, unspawn_val);
+    tuning->SetUnspawnMax(unspawn_val);
   }
 
   if (traffic_scale > 0.0f && traffic_scale <= 2.0f) {
-    WriteGuestFloat(base + 8, orig_spawn_max * (0.5f + 0.5f * traffic_scale));
-    WriteGuestFloat(base + 20, orig_cull_max * (0.5f + 0.5f * traffic_scale));
+    tuning->SetSpawnMax(orig_spawn_max * (0.5f + 0.5f * traffic_scale));
+    tuning->SetCullMax(orig_cull_max * (0.5f + 0.5f * traffic_scale));
   }
 
   if (ped_scale >= 0.0f && ped_scale <= 2.0f) {
-    WriteGuestFloat(base + 92, orig_ped_density * ped_scale);
+    tuning->SetPedDensity(orig_ped_density * ped_scale);
   }
 
   if (parked_scale >= 0.0f && parked_scale <= 2.0f) {
-    WriteGuestFloat(base + 152, orig_parked_factor * parked_scale);
+    tuning->SetParkedFactor(orig_parked_factor * parked_scale);
   }
 
   std::printf("[MCLA] Ambient density tuning applied at 0x%08X: unspawn=%.1f (was %.1f), traffic_scale=%.2f, ped_density=%.4f (was %.4f), parked_factor=%.2f (was %.2f)\n",
-              base, ReadGuestFloat(base + 16), orig_unspawn,
+              base_addr, tuning->GetUnspawnMax(), orig_unspawn,
               traffic_scale,
-              ReadGuestFloat(base + 92), orig_ped_density,
-              ReadGuestFloat(base + 152), orig_parked_factor);
+              tuning->GetPedDensity(), orig_ped_density,
+              tuning->GetParkedFactor(), orig_parked_factor);
 }
 
 // Disable Motion Blur patch
@@ -692,9 +698,8 @@ void Patch_DofComposite(PPCRegister& r3) {
   uint32_t obj_addr = r3.u32;
   if (!obj_addr) return;
 
-  for (int i = 0; i < 16; ++i) {
-    base[obj_addr + 0xF0 + i] = 0;
-  }
+  auto* dof = reinterpret_cast<rage::mcDofObject*>(base + obj_addr);
+  dof->ZeroCoC();
 }
 
 
