@@ -173,8 +173,29 @@ name = "Patch_DofComposite"
 registers = ["r3"]
 
 [functions]
-# BadassBaboon's Recomp Adjustments: Full script native command & VM dispatch function table (550+ entries).
-# Recompiled as native C++ functions to completely eliminate all script VM stub fallbacks.
+# ========================================================================================
+# BadassBaboon's Recomp Adjustments: Full Script Native Command & VM Dispatch Function Table
+# ========================================================================================
+# WHY THESE ADDRESSES ARE HERE:
+# In the original Xbox 360 binary (default.xex), the RAGE script engine dispatches hundreds
+# of gameplay commands dynamically via indirect function pointers (bctr / bctrl).
+# 
+# ReXGlue statically decompiles PowerPC assembly into native C++. When an indirect call
+# targets a guest address that wasn't declared as a function start, ReXGlue falls back to
+# generating a generic runtime stub (REX_UNREGISTERED_INDIRECT) which does nothing.
+# 
+# By declaring each of these addresses with `is_function_start = true`, ReXGlue compiles
+# every native script routine directly into C++ code, eliminating all stub fallbacks.
+#
+# SUBSYSTEMS COVERED BY THESE 540+ NATIVE ENTRIES:
+# - UI & HUD: Forms, item lists, focus callbacks, meters, and text widgets (e.g. SimpleListForm_GetItem).
+# - Race & Grid Logic: Grid coordinates, start lines, checkpoints, racer rankings (e.g. RaceGrid_SetPosition).
+# - Vehicle & Garage: Vehicle performance stats, visual customization, vinyls, tire physics, and repairs.
+# - Map & World GPS: Coordinate warpers (e.g. Warper_Warp), GPS route calculation, and map blips.
+# - Career & Unlocks: Profile saves, garage vehicle unlocks, rep rank advancement, and payout calculations.
+# - Audio & Speech: Dynamic dialogue, radio stations, and sound effect triggers.
+# - Script VM Dispatchers: 40 core argument formatting and native command invokers (0x82553F40 - 0x82554798).
+# ========================================================================================
 0x821E63E0 = { is_function_start = true }
 0x821E7400 = { is_function_start = true }
 0x821E7408 = { is_function_start = true }
