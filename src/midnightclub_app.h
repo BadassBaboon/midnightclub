@@ -199,6 +199,26 @@ class MidnightclubApp : public rex::ReXApp {
     const char* refresh = getenv("MCLA_REFRESH_RATE");
     SetFlag("pre ", "video_mode_refresh_rate", (refresh && *refresh) ? refresh : "60");
 
+    // Audio output buffering.
+    //
+    // "Max buffered audio frames (range 4-64). Lower reduces latency but may
+    // cause stuttering." Lives in rexruntime, so unlike the GPU flags it does
+    // bind from OnPreSetup.
+    //
+    // Reported symptom this targets: audio jitter/crackle in dense areas, worst
+    // in the first-person cockpit camera (which adds reverb and occlusion DSP
+    // per voice) and on tyre skid loops. Testing ruled out both of the obvious
+    // explanations - a memory-ordering fence in mc_FlushDataCache made no
+    // audible difference, and cutting traffic/ped density to 0.1 did not help
+    // either, so it is not general CPU starvation. What is left is the audio
+    // pipeline's own headroom, which is what this controls.
+    //
+    // Left at the engine default unless MCLA_AUDIO_QFRAMES is set, so the
+    // default gets recorded in effective_config.txt before we start tuning.
+    if (const char* aq = getenv("MCLA_AUDIO_QFRAMES"); aq && *aq) {
+      SetFlag("pre ", "audio_maxqframes", aq);
+    }
+
     SetFlag("pre ", "fullscreen", "true"); // Bypass DWM VBlank waiting
   }
 
@@ -218,6 +238,7 @@ class MidnightclubApp : public rex::ReXApp {
         "texture_cache_memory_limit_hard",
         "texture_cache_memory_limit_render_to_texture",
         "anisotropic_override", "gpu_allow_invalid_fetch_constants", "log_level",
+        "audio_maxqframes", "audio_mute",
     };
     std::filesystem::create_directories("logs");
     if (FILE* f = fopen("logs/effective_config.txt", "w")) {
@@ -243,7 +264,8 @@ class MidnightclubApp : public rex::ReXApp {
                             "MCLA_DISABLE_DOF", "MCLA_DISABLE_MSAA",
                             "MCLA_DISABLE_MOTION_BLUR", "MCLA_DISABLE_IMPOSTER_SHADOWS",
                             "MCLA_RESOLVE_SYMBOLS", "MCLA_GAME_DATA",
-                            "MCLA_STRINGS_FILE", "MCLA_NO_STUB_SWEEP",
+                            "MCLA_STRINGS_FILE", "MCLA_NO_STUB_SWEEP", "MCLA_CACHE_FENCE",
+                            "MCLA_AUDIO_QFRAMES",
                             "REX_LOG_LEVEL"}) {
         const char* v = getenv(e);
         fprintf(f, "%-46s = %s\n", e, v ? v : "<not set>");

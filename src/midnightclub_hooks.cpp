@@ -22,6 +22,7 @@
 #include <rex/hook.h>
 #include <rex/ppc/context.h>
 #include <rex/runtime.h>
+#include <rex/perf/counter.h>
 
 #include <bit>
 #include <cstring>
@@ -238,6 +239,36 @@ void RecordFrameTime() {
                  spikes[0], spikes[1], spikes[2], spikes[3],
                  measured_dt_ms, engine_dt * 1000.0f, engine_fps, accum, count,
                  (engine_dt > 0.0f) ? (measured_dt_ms / (engine_dt * 1000.0f)) : 0.0);
+
+    // rexglue exposes a perf counter registry (rex/perf/counter.h) whose symbols
+    // are exported from the runtime. The CSV auto-writer is compiled out of the
+    // shipped DLL, but GetCounter() is callable, so read the interesting ones
+    // directly.
+    //
+    // Why these: the audio jitter has survived three eliminations (memory
+    // ordering, CPU load, output buffer depth), so guessing a fourth cause is
+    // not worth another test run. buffer_queue_depth and xma_frames_decoded say
+    // whether the output queue is underrunning or the decoder is falling behind
+    // - i.e. whether the problem is downstream or upstream. The threading and
+    // GPU counters come free and speak to the dense-area CPU bottleneck.
+    {
+      using rex::perf::CounterId;
+      using rex::perf::GetCounter;
+      std::fprintf(log,
+                   "           perf: xma_decoded=%lld audio_latency_us=%lld queue_depth=%lld"
+                   " | cmdbuf_stalls=%lld crit_contentions=%lld apc_depth=%lld threads=%lld"
+                   " | texcache hit=%lld miss=%lld draws=%lld\n",
+                   (long long)GetCounter(CounterId::kXmaFramesDecoded),
+                   (long long)GetCounter(CounterId::kAudioFrameLatencyUs),
+                   (long long)GetCounter(CounterId::kBufferQueueDepth),
+                   (long long)GetCounter(CounterId::kCommandBufferStalls),
+                   (long long)GetCounter(CounterId::kCriticalRegionContentions),
+                   (long long)GetCounter(CounterId::kApcQueueDepth),
+                   (long long)GetCounter(CounterId::kActiveThreads),
+                   (long long)GetCounter(CounterId::kTextureCacheHits),
+                   (long long)GetCounter(CounterId::kTextureCacheMisses),
+                   (long long)GetCounter(CounterId::kDrawCalls));
+    }
 
     // Substep count at 0x822C2434. The loop makes r24+1 passes: r24 substeps
     // of dt/r24 plus one full-dt pass. Measured as a constant 2 at every frame
@@ -838,14 +869,28 @@ void MCLA_SkipIntroRenderPassMask(PPCRegister& r4) {
 
 // 0x821D5510 - the Xbox 360 hardware cache flush loop (dcbf/dcbst).
 //
-// On PowerPC this walks a buffer 128 bytes at a time flushing cache lines for
-// DMA coherency. On x86_64 host memory is already coherent, so the loop has no
-// semantic effect and only costs time - which is why this can be replaced
-// outright rather than switched at runtime: there is no behaviour to preserve.
+// On PowerPC this walks a buffer 128 bytes at a time flushing cache lines so a
+// DMA consumer sees the writes. Two separate things are going on:
 //
-// Whether it is WORTH replacing is a separate question, so count the calls and
-// the bytes we skip. MCLA_TIMING_LOG=1 reports both once per second. Called
-// from streaming threads as well as the main thread, hence atomics.
+//   1. The actual cache flush. On x86_64 host caches are coherent with every
+//      other core and with DMA, so this part is genuinely unnecessary.
+//   2. A PUBLICATION POINT. The guest writes a buffer and then calls this to
+//      make those writes visible to whoever consumes them next.
+//
+// An earlier version of this hook returned immediately and did neither. It was
+// removed from the project because it made music, SFX and the audio channels
+// crackle, hiss and lag - and that is exactly what dropping (2) predicts. The
+// XMA Decoder and Audio Worker run on their own host threads (visible in the
+// startup log), so without ordering they can observe a partially written audio
+// buffer. Coherent caches do not save you there; nothing stops the compiler or
+// the CPU reordering stores relative to another thread's loads.
+//
+// So: skip the loop, keep the barrier. One seq_cst fence per call at roughly
+// 5,000 calls/sec is nothing next to the ~540,000 emulated 128-byte line
+// operations per second it replaces.
+//
+// MCLA_CACHE_FENCE=0 drops the fence, reproducing the old crackling build for
+// A/B purposes. Do not ship with it set.
 std::atomic<uint64_t> g_cacheflush_calls{0};
 std::atomic<uint64_t> g_cacheflush_bytes{0};
 
@@ -854,6 +899,14 @@ uint32_t FlushDataCache_hook(uint32_t addr, uint32_t size, uint32_t flag) {
   (void)flag;
   g_cacheflush_calls.fetch_add(1, std::memory_order_relaxed);
   g_cacheflush_bytes.fetch_add(size, std::memory_order_relaxed);
+
+  static const bool fence = [] {
+    const char* e = std::getenv("MCLA_CACHE_FENCE");
+    return !(e && *e == '0');
+  }();
+  if (fence) {
+    std::atomic_thread_fence(std::memory_order_seq_cst);
+  }
   return addr;
 }
 REX_HOOK(mc_FlushDataCache, FlushDataCache_hook);
