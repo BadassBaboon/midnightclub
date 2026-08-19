@@ -172,7 +172,29 @@ address = 0x8260EBB8
 name = "Patch_DofComposite"
 registers = ["r3"]
 
+
+# BadassBaboon's Recomp Adjustments: Skip intro legal movies cleanly.
+#
+# The intro BIK/SWF plays too fast at unlocked frame rates. This is inherent to
+# the 60 FPS unlock and affects LARecomp the same way when the same method is
+# used, so we do not chase it - MCLA_SKIP_INTRO=1 is the supported workaround.
+[[midasm_hook]]
+address = 0x822C2F08
+name = "SkipIntro"
+jump_address_on_true = 0x822C2F7C
+
+# Fix phantom extra render pass mask when the intro is skipped.
+# 0x821315E4 in sub_82131508. Without this, skipping the intro leaves bit 24 set
+# and the engine submits an uninitialised render pass that corrupts Downtown
+# shaders. Only active when MCLA_SKIP_INTRO=1.
+[[midasm_hook]]
+address = 0x821315E4
+name = "MCLA_SkipIntroRenderPassMask"
+registers = ["r4"]
+
 [functions]
+# Bypass the Xbox 360 hardware cache flush loop (dcbf/dcbst) - see hooks.cpp.
+0x821D5510 = { name = "mc_FlushDataCache" }
 # ========================================================================================
 # BadassBaboon's Recomp Adjustments: Full Script Native Command & VM Dispatch Function Table
 # ========================================================================================
