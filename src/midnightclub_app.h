@@ -16,6 +16,7 @@
 #include <atomic>
 #include <mutex>
 #include <unordered_map>
+#include <chrono>
 #include <filesystem>
 #include <string>
 #include <vector>
@@ -241,7 +242,8 @@ class MidnightclubApp : public rex::ReXApp {
                             "MCLA_PARKED_CAR_SCALE", "MCLA_TRAFFIC_UNSPAWN_MAX",
                             "MCLA_DISABLE_DOF", "MCLA_DISABLE_MSAA",
                             "MCLA_DISABLE_MOTION_BLUR", "MCLA_DISABLE_IMPOSTER_SHADOWS",
-                            "MCLA_RESOLVE_SYMBOLS",
+                            "MCLA_RESOLVE_SYMBOLS", "MCLA_GAME_DATA",
+                            "MCLA_STRINGS_FILE", "MCLA_NO_STUB_SWEEP",
                             "REX_LOG_LEVEL"}) {
         const char* v = getenv(e);
         fprintf(f, "%-46s = %s\n", e, v ? v : "<not set>");
@@ -267,15 +269,56 @@ class MidnightclubApp : public rex::ReXApp {
   //
 
 
+  // Locate the extracted game data.
+  //
+  // This used to hardcode "E:/MCLA/MCLA_Game_Files", which meant nobody but the
+  // original developer could build and run the project without editing source.
+  // Search order, first hit wins:
+  //
+  //   1. MCLA_GAME_DATA environment variable  (works anywhere, no rebuild)
+  //   2. game_data/ next to the executable    (self-contained install)
+  //   3. MCLA_Game_Files/ walking up from the working directory
+  //
+  // A candidate only counts if it actually contains default.xex - an empty or
+  // half-extracted folder should keep searching rather than silently winning
+  // and then failing later with a confusing error.
+  static bool HasGameData(const std::filesystem::path& dir) {
+    std::error_code ec;
+    return !dir.empty() && std::filesystem::exists(dir / "default.xex", ec);
+  }
+
   void OnConfigurePaths(rex::PathConfig& paths) override {
-    if (std::filesystem::exists("E:/MCLA/MCLA_Game_Files")) {
-      paths.game_data_root = "E:/MCLA/MCLA_Game_Files";
-    } else if (std::filesystem::exists("../MCLA_Game_Files")) {
-      paths.game_data_root = "../MCLA_Game_Files";
+    std::vector<std::filesystem::path> candidates;
+
+    if (const char* env = getenv("MCLA_GAME_DATA"); env && *env) {
+      candidates.emplace_back(env);
     }
+    candidates.emplace_back("game_data");
+
+    std::filesystem::path up = "MCLA_Game_Files";
+    for (int i = 0; i < 6; ++i) {
+      candidates.push_back(up);
+      up = std::filesystem::path("..") / up;
+    }
+
+    for (const auto& c : candidates) {
+      if (HasGameData(c)) {
+        paths.game_data_root = c;
+        break;
+      }
+    }
+
+    if (paths.game_data_root.empty()) {
+      fprintf(stderr,
+              "[MCLA] Could not find game data (a folder containing default.xex).\n"
+              "       Set MCLA_GAME_DATA to your extracted disc folder, or place\n"
+              "       it as 'game_data' next to midnightclub.exe.\n");
+    }
+
     paths.user_data_root = "user_data";
     paths.cache_root     = "cache";
   }
+
 
   void OnPostSetup() override {
     // PHASE 2 RESULT. Frame times were quantized to a 15.625 ms grid (= 1/64 s,
@@ -420,15 +463,40 @@ class MidnightclubApp : public rex::ReXApp {
     fd->SetFunction(0x82130678, disc_error_bypass);
 
     // Pass 2: walk the full XEX code region and stub every 4-byte-aligned
-    // address that has no generated function. Catches indirect calls from
-    // game code that the static analysis missed, logging the caller's LR.
-    static constexpr uint32_t kCodeBase = 0x82130000;
-    static constexpr uint32_t kCodeEnd  = 0x827CD054;
-    for (uint32_t addr = kCodeBase; addr < kCodeEnd; addr += 4) {
-      if (!fd->GetFunction(addr)) {
-        fd->SetFunction(addr, stub);
+    // address that has no generated function. Catches indirect calls from game
+    // code that static analysis missed, logging the caller's LR.
+    //
+    // This is a SAFETY NET, not diagnostics. An empty stubs.txt proves nothing
+    // was hit - it does NOT prove the net is unnecessary, because without it an
+    // unmapped indirect call becomes a crash rather than a logged no-op. So it
+    // stays on by default and gets measured rather than removed on a hunch.
+    //
+    // MCLA_NO_STUB_SWEEP=1 skips it, for A/B'ing startup cost. Only worth doing
+    // if stubs.txt has stayed empty across a representative set of sessions.
+    if (const char* e = getenv("MCLA_NO_STUB_SWEEP"); !(e && *e == '1')) {
+      static constexpr uint32_t kCodeBase = 0x82130000;
+      static constexpr uint32_t kCodeEnd  = 0x827CD054;
+
+      auto t0 = std::chrono::steady_clock::now();
+      uint32_t stubbed = 0;
+      for (uint32_t addr = kCodeBase; addr < kCodeEnd; addr += 4) {
+        if (!fd->GetFunction(addr)) {
+          fd->SetFunction(addr, stub);
+          ++stubbed;
+        }
+      }
+      auto ms = std::chrono::duration_cast<std::chrono::milliseconds>(
+                    std::chrono::steady_clock::now() - t0).count();
+
+      if (FILE* f = fopen("logs/effective_config.txt", "a")) {
+        fprintf(f, "\n=== stub sweep ===\n");
+        fprintf(f, "scanned %u addresses, stubbed %u, took %lld ms\n",
+                (kCodeEnd - kCodeBase) / 4, stubbed, (long long)ms);
+        fprintf(f, "(MCLA_NO_STUB_SWEEP=1 skips this; safe only if stubs.txt stays empty)\n");
+        fclose(f);
       }
     }
+
 
   }
 

@@ -29,6 +29,7 @@
 #include <chrono>
 #include <thread>
 #include <cstdio>
+#include <filesystem>
 #include <cstdlib>
 #include <ctime>
 #include <string>
@@ -723,11 +724,24 @@ void MCLAAmbientDensityTuning(PPCRegister& r3) {
     tuning->SetParkedFactor(orig_parked_factor * parked_scale);
   }
 
-  std::printf("[MCLA] Ambient density tuning applied at 0x%08X: unspawn=%.1f (was %.1f), traffic_scale=%.2f, ped_density=%.4f (was %.4f), parked_factor=%.2f (was %.2f)\n",
-              base_addr, tuning->GetUnspawnMax(), orig_unspawn,
-              traffic_scale,
-              tuning->GetPedDensity(), orig_ped_density,
-              tuning->GetParkedFactor(), orig_parked_factor);
+  // This constructor runs once per ambient zone - measured 25+ times in a 12
+  // second session - so a printf per call is both spam and pointless under
+  // Start-Process, where there is no console attached. Log the first one only,
+  // and to a file, which is where every other diagnostic in this project goes.
+  static bool logged = false;
+  if (!logged) {
+    logged = true;
+    std::filesystem::create_directories("logs");
+    if (std::FILE* f = std::fopen("logs/effective_config.txt", "a")) {
+      std::fprintf(f, "\n=== ambient density tuning (first instance) ===\n");
+      std::fprintf(f, "unspawn_max   %.1f -> %.1f\n", orig_unspawn, tuning->GetUnspawnMax());
+      std::fprintf(f, "ped_density   %.4f -> %.4f\n", orig_ped_density, tuning->GetPedDensity());
+      std::fprintf(f, "parked_factor %.4f -> %.4f\n", orig_parked_factor, tuning->GetParkedFactor());
+      std::fprintf(f, "spawn_max     %.1f -> %.1f\n", orig_spawn_max, tuning->GetSpawnMax());
+      std::fprintf(f, "cull_max      %.1f -> %.1f\n", orig_cull_max, tuning->GetCullMax());
+      std::fclose(f);
+    }
+  }
 }
 
 // Disable Motion Blur patch

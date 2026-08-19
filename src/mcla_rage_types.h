@@ -4,6 +4,7 @@
 #pragma once
 
 #include <cstdint>
+#include <cstddef>
 #include <bit>
 #include <cstring>
 #include "mcla_symbol_resolver.h"
@@ -89,19 +90,34 @@ struct AABB_BE {
 // MCLA Game Engine Structures (Reconstructed from RSC5 / CodeX)
 // ---------------------------------------------------------------------------
 
-// mcAmbientDensityTuning - Manages dynamic traffic, crowd, and parked vehicle spawning
-// Reconstructed from sub_826F5B18 constructor in MCLA
+// mcAmbientDensityTuning - dynamic traffic, crowd and parked-vehicle spawning.
+// Reconstructed from the sub_826F5B18 constructor.
+//
+// OFFSETS ARE STATIC-ASSERTED BELOW. They were previously wrong and nothing
+// caught it: the comments claimed ped_density at +0x5C and parked_factor at
+// +0x98, but `pad_18[72]` starting at +0x18 actually placed them at +0x60 and
+// +0x9C. ped_density got away with it (+0x60 happens to be a real pedestrian
+// value, 15.0), but +0x9C is never written by the constructor, so
+// MCLA_PARKED_CAR_SCALE was scaling uninitialised memory and did nothing at all
+// - it logged "parked_factor=-0.00 (was -0.00)" every time.
+//
+// Constructor stores, verified in IDA:
+//   +0x08 = flt_82018B1C = 180.0     spawn_max
+//   +0x10 = flt_8201CD44 = 400.0     unspawn_max
+//   +0x14 = flt_8204E11C = 700.0     cull_max
+//   +0x60 = flt_82007F9C = 15.0      ped_density
+//   +0x98 = flt_82008DD0 = 0.25      parked_factor  (last store in the ctor)
 struct mcAmbientDensityTuning {
-  uint32_t vtable;             // +0x00 (0)
-  uint32_t unk_04;             // +0x04 (4)
-  float spawn_max;             // +0x08 (8) - Maximum active traffic spawn count
-  uint32_t unk_0c;             // +0x0C (12)
-  float unspawn_max;           // +0x10 (16) - Distance radius to unspawn trailing vehicles
-  float cull_max;              // +0x14 (20) - Outer culling radius for background traffic
-  uint8_t pad_18[72];          // +0x18 (24..91)
-  float ped_density;           // +0x5C (92) - Sidewalk pedestrian spawn density
-  uint8_t pad_60[56];          // +0x60 (96..151)
-  float parked_factor;         // +0x98 (152) - Roadside parked car population factor
+  uint32_t vtable;             // +0x00
+  uint32_t unk_04;             // +0x04
+  float spawn_max;             // +0x08
+  uint32_t unk_0c;             // +0x0C
+  float unspawn_max;           // +0x10
+  float cull_max;              // +0x14
+  uint8_t pad_18[72];          // +0x18 .. +0x5F
+  float ped_density;           // +0x60
+  uint8_t pad_64[52];          // +0x64 .. +0x97
+  float parked_factor;         // +0x98
 
   float GetSpawnMax() const { return ReadBEFloat(reinterpret_cast<const uint8_t*>(&spawn_max)); }
   float GetUnspawnMax() const { return ReadBEFloat(reinterpret_cast<const uint8_t*>(&unspawn_max)); }
@@ -115,6 +131,15 @@ struct mcAmbientDensityTuning {
   void SetPedDensity(float v) { WriteBEFloat(reinterpret_cast<uint8_t*>(&ped_density), v); }
   void SetParkedFactor(float v) { WriteBEFloat(reinterpret_cast<uint8_t*>(&parked_factor), v); }
 };
+
+// Guest struct offsets are load-bearing: a wrong one silently reads or writes
+// unrelated memory rather than failing. Assert every one.
+static_assert(offsetof(mcAmbientDensityTuning, spawn_max)     == 0x08);
+static_assert(offsetof(mcAmbientDensityTuning, unspawn_max)   == 0x10);
+static_assert(offsetof(mcAmbientDensityTuning, cull_max)      == 0x14);
+static_assert(offsetof(mcAmbientDensityTuning, ped_density)   == 0x60);
+static_assert(offsetof(mcAmbientDensityTuning, parked_factor) == 0x98);
+
 
 // mcDofObject - Depth of Field composite parameters
 // Reconstructed from sub_8260EBB8

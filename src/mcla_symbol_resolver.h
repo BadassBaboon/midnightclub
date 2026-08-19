@@ -9,6 +9,7 @@
 #include <unordered_map>
 #include <fstream>
 #include <mutex>
+#include <vector>
 #include <cstdlib>
 
 namespace rage {
@@ -141,15 +142,28 @@ class SymbolResolver {
     if (loaded_ || !enabled_) return;
     loaded_ = true;
 
-    // Search candidate dictionary file paths
-    const char* candidate_paths[] = {
-      "Codex.Games.MCLA.strings.txt",
-      "../CodeX.Games.MCLA/Codex.Games.MCLA.strings.txt",
-      "E:/MCLA/CodeX.Games.MCLA/Codex.Games.MCLA.strings.txt",
-      "user_data/mcla_strings.txt"
-    };
+    // Search candidate dictionary file paths.
+    //
+    // MCLA_STRINGS_FILE takes priority so this works on any machine. The
+    // remaining entries are relative to the working directory (the build dir),
+    // walking outwards toward a sibling CodeX checkout. There is deliberately
+    // no absolute path here - the previous "E:/MCLA/..." entry only ever
+    // resolved on one developer's machine.
+    std::vector<std::string> candidate_paths;
+    if (const char* p = std::getenv("MCLA_STRINGS_FILE")) {
+      if (*p) candidate_paths.emplace_back(p);
+    }
+    for (const char* rel : {
+             "Codex.Games.MCLA.strings.txt",
+             "user_data/mcla_strings.txt",
+             "../CodeX.Games.MCLA/Codex.Games.MCLA.strings.txt",
+             "../../CodeX.Games.MCLA/Codex.Games.MCLA.strings.txt",
+             "../../../CodeX.Games.MCLA/Codex.Games.MCLA.strings.txt",
+             "../../../../CodeX.Games.MCLA/Codex.Games.MCLA.strings.txt"}) {
+      candidate_paths.emplace_back(rel);
+    }
 
-    for (const char* path : candidate_paths) {
+    for (const std::string& path : candidate_paths) {
       std::ifstream infile(path);
       if (infile.is_open()) {
         std::string line;
