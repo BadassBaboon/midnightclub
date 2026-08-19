@@ -38512,7 +38512,7 @@ loc_821D54F8:
 	return;
 }
 
-DEFINE_REX_FUNC(sub_821D5510) {
+DEFINE_REX_FUNC(mc_FlushDataCache) {
 	REX_FUNC_PROLOGUE();
 	// add r10,r3,r4
 	ctx.r10.u64 = ctx.r3.u64 + ctx.r4.u64;

@@ -3122,7 +3122,7 @@ PPCFuncMapping PPCFuncMappings[] = {
 	{ 0x821D53D8, sub_821D53D8 },
 	{ 0x821D5408, sub_821D5408 },
 	{ 0x821D54C0, sub_821D54C0 },
-	{ 0x821D5510, sub_821D5510 },
+	{ 0x821D5510, mc_FlushDataCache },
 	{ 0x821D5548, sub_821D5548 },
 	{ 0x821D58D8, sub_821D58D8 },
 	{ 0x821D58F0, sub_821D58F0 },

@@ -3114,7 +3114,7 @@ void midnightclub_RegisterFunctions(rex::runtime::IModuleRegistrar* registrar) {
   registrar->SetFunction(0x821D53D8, sub_821D53D8);
   registrar->SetFunction(0x821D5408, sub_821D5408);
   registrar->SetFunction(0x821D54C0, sub_821D54C0);
-  registrar->SetFunction(0x821D5510, sub_821D5510);
+  registrar->SetFunction(0x821D5510, mc_FlushDataCache);
   registrar->SetFunction(0x821D5548, sub_821D5548);
   registrar->SetFunction(0x821D58D8, sub_821D58D8);
   registrar->SetFunction(0x821D58F0, sub_821D58F0);
