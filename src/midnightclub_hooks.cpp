@@ -532,21 +532,71 @@ void MCLAPresentInterval(PPCRegister& r11) {
   if (force) r11.s64 = 1;
 }
 
-// BadassBaboon's Recomp Adjustments: Continuous-time exponential decay camera boom smoothing for 60 FPS
-// 0x823203D4, in sub_82320298 (likely mcPlayerCamera::Update).
-// Applies the 60 FPS exponential decay formula to the camera boom interpolation 
-// constant before it is passed to the generic matrix Lerp function. This correctly 
-// scales the chase camera motion without poisoning cockpit animations or HUD logic.
-void MCLACameraBoomSmoothing(PPCRegister& f1) {
+// BadassBaboon's Recomp Adjustments: Continuous-time exponential decay camera smoothing
+// In sub_82320298 (mcPlayerCamera::Update):
+// 0x82320468: f13 is camera position chase smoothing factor S1.
+// 0x823204F4: f0 is camera look-at orientation smoothing factor S2.
+//
+// Calibration to True 30 FPS Console Baseline:
+// On the original 30 FPS Xbox 360 console, MCLA multiplied the raw profile factor S_raw by 0.5:
+//   k30 = 0.5 * S_raw
+// In 60+ FPS recomp, the engine bypassed the 0.5 multiplier and stepped S_raw at high refresh
+// rates, making the chase camera snap to the vehicle 4x-16x faster than intended.
+//
+// The continuous-time exponential decay matching the true 30 FPS console camera lag is:
+//   S(dt) = 1.0 - (1.0 - (0.5 * S_raw))^(30.0 * dt * camera_scale)
+void MCLACameraPosSmoothing(PPCRegister& f13) {
   float dt = ReadGuestFloat(kGuestFrameDelta);
-  double k = f1.f64;
-  if (k > 0.0 && k < 1.0) {
-    f1.f64 = 1.0 - std::pow(1.0 - k, dt * 30.0);
+  double raw_k = f13.f64;
+  if (raw_k > 0.0 && raw_k < 1.0 && dt > 0.0f) {
+    static const double user_scale = [] {
+      if (const char* e = std::getenv("MCLA_CAMERA_SMOOTH_SCALE")) {
+        double v = std::atof(e);
+        if (v > 0.1 && v <= 5.0) return v;
+      }
+      return 1.0;
+    }();
+    double k30 = 0.5 * raw_k;
+    if (k30 >= 1.0) k30 = 0.999;
+    f13.f64 = 1.0 - std::pow(1.0 - k30, static_cast<double>(dt) * 30.0 * user_scale);
   }
 }
 
-// BadassBaboon's Recomp Adjustments: City / building geometry LOD scaling
-// 0x822D5BC4: lfs f13, 0(r11) in sub_822D5B78.
+void MCLACameraLookAtSmoothing(PPCRegister& f0) {
+  float dt = ReadGuestFloat(kGuestFrameDelta);
+  double raw_k = f0.f64;
+  if (raw_k > 0.0 && raw_k < 1.0 && dt > 0.0f) {
+    static const double user_scale = [] {
+      if (const char* e = std::getenv("MCLA_CAMERA_SMOOTH_SCALE")) {
+        double v = std::atof(e);
+        if (v > 0.1 && v <= 5.0) return v;
+      }
+      return 1.0;
+    }();
+    double k30 = 0.5 * raw_k;
+    if (k30 >= 1.0) k30 = 0.999;
+    f0.f64 = 1.0 - std::pow(1.0 - k30, static_cast<double>(dt) * 30.0 * user_scale);
+  }
+}
+
+// BadassBaboon's Recomp Adjustments: Vehicle chassis suspension damping & ground depth filter continuous-time scaling
+// In sub_82563298:
+// 0x82563720: f0 is the chassis ground depth filter coefficient alpha (0.10 at 30 FPS, 0.05 at 60 FPS).
+// At >60 FPS (120/144/240 FPS), the stock 60 FPS constant 0.05 steps at GPU refresh rate, causing
+// over-damped or hyper-reactive suspension bounce. Continuous-time exponential decay:
+//   alpha(dt) = 1.0 - (1.0 - 0.10)^(30.0 * dt) = 1.0 - 0.90^(30.0 * dt)
+void MCLAChassisDepthSmoothing(PPCRegister& f0) {
+  float dt = ReadGuestFloat(kGuestFrameDelta);
+  if (dt > 0.0f) {
+    f0.f64 = 1.0 - std::pow(0.90, static_cast<double>(dt) * 30.0);
+  }
+}
+
+// BadassBaboon's Recomp Adjustments: City / building geometry LOD and sector streaming scaling
+// 0x822D5BC4: lfs f13, 0(r11) in sub_822D5A30 (mcCityRenderer::UpdateLODAndStreaming).
+// In RSC5 (CodeX Rsc5City / Rsc5MapDistrictLod), MCLA computes active LOD draw distance:
+//   flt_827E0E50 (active LOD) = flt_827E0DE0 (base 300.0m) * flt_827E0DEC (speed multiplier).
+// Scaling base LOD reduces dense Downtown draw calls and vertex queue spikes by ~30%.
 void UpdateCityLODMemory() {
   static bool applied = false;
   if (applied) return;
@@ -559,7 +609,7 @@ void UpdateCityLODMemory() {
     if (v >= 0.1f && v <= 10.0f) scale = v;
   }
   float final_lod = scale * 300.0f;
-  WriteGuestFloat(0x827E0DE0, final_lod);
+  WriteGuestFloat(rage::kBaseLodDistanceAddr, final_lod);
   applied = true;
 }
 

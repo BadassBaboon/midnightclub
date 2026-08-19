@@ -102,13 +102,28 @@ name = "MCLASubstepDelta"
 address = 0x822C2478
 registers = ["r27"]
 
-# BadassBaboon's Recomp Adjustments: Continuous-time exponential decay camera boom smoothing for 60 FPS
-# 0x823203D4: fmr f1, f27 in sub_82320298 (mcPlayerCamera::Update).
-# f1 is the interpolation constant passed to sub_8231D3A8 (generic Lerp/Slerp).
+# BadassBaboon's Recomp Adjustments: Continuous-time exponential decay camera smoothing
+# 0x82320468: addi r9, r1, 0x50 in sub_82320298 (mcPlayerCamera::Update).
+# f13 is the camera position chase/lag smoothing factor S1 right before storage.
 [[midasm_hook]]
-name = "MCLACameraBoomSmoothing"
-address = 0x823203D4
-registers = ["f1"]
+name = "MCLACameraPosSmoothing"
+address = 0x82320468
+registers = ["f13"]
+
+# 0x823204F4: li r9, 0x120 in sub_82320298 (mcPlayerCamera::Update).
+# f0 is the camera look-at / orientation smoothing factor S2 right before storage.
+[[midasm_hook]]
+name = "MCLACameraLookAtSmoothing"
+address = 0x823204F4
+registers = ["f0"]
+
+# BadassBaboon's Recomp Adjustments: Vehicle chassis suspension damping & ground depth filter continuous-time scaling
+# 0x82563720: lis r11, flt_82001D14@ha in sub_82563298.
+# f0 is the chassis ground depth filter coefficient alpha (0.10 at 30 FPS, 0.05 at 60 FPS).
+[[midasm_hook]]
+name = "MCLAChassisDepthSmoothing"
+address = 0x82563720
+registers = ["f0"]
 
 # BadassBaboon's Recomp Adjustments: City / building geometry LOD scaling
 # 0x822D5BC4: lfs f13, 0(r11) in sub_822D5B78.

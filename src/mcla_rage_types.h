@@ -128,6 +128,7 @@ struct mcDofObject {
 
 // rage::grmCitySector / Rsc5CityMapSector
 // VFT: 0x825CAF3C. Represents a streaming city grid block in MCLA (.xcs / .xct)
+// Size: exactly 304 bytes (0x130)
 struct grmCitySector {
   uint8_t pad_00[0xD0];        // +0x00..0xCF (0..207) - Sector header and entity tables
   Vector4BE aabb_min;          // +0xD0 (208) - Sector world bounding box minimum
@@ -135,5 +136,25 @@ struct grmCitySector {
   uint32_t name_ptr;           // +0xF0 (240) - Pointer to ASCII sector name
   uint8_t pad_f4[0x3C];        // +0xF4..0x12F (244..303)
 };
+
+// mcCity - City & Sector Streaming Manager Singleton (at 0x827E0DC8)
+// Reconstructed from RSC5 Rsc5City and sub_822D5A30
+struct mcCity {
+  uint32_t vtable;             // +0x00 (0) - 0x825CAF3C
+  uint32_t map_bounds_ptr;     // +0x04 (4) - Pointer to Rsc5CityBounds
+  uint32_t unk_08;             // +0x08 (8)
+  uint32_t sector_count;       // +0x0C (12) - Number of sectors in city
+  uint32_t unk_10;             // +0x10 (16)
+  uint32_t sectors_arr_ptr;    // +0x14 (20) - Pointer to grmCitySector array
+
+  uint32_t GetSectorCount() const { return ReadBEUInt32(reinterpret_cast<const uint8_t*>(&sector_count)); }
+  uint32_t GetSectorsArrayPtr() const { return ReadBEUInt32(reinterpret_cast<const uint8_t*>(&sectors_arr_ptr)); }
+};
+
+// Known Global Memory Addresses in MCLA
+constexpr uint32_t kCityManagerGlobalPtr   = 0x827E0DC8;
+constexpr uint32_t kBaseLodDistanceAddr    = 0x827E0DE0; // float: 300.0f stock
+constexpr uint32_t kActiveLodDistanceAddr  = 0x827E0E50; // float: dynamic scaled distance
+constexpr uint32_t kLodSpeedScaleAddr      = 0x827E0DEC; // float: velocity-interpolated factor
 
 } // namespace rage

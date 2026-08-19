@@ -36209,7 +36209,9 @@ loc_8232027C:
 	return;
 }
 
-extern void MCLACameraBoomSmoothing(PPCRegister& f1);
+extern void MCLACameraPosSmoothing(PPCRegister& f13);
+
+extern void MCLACameraLookAtSmoothing(PPCRegister& f0);
 
 DEFINE_REX_FUNC(sub_82320298) {
 	REX_FUNC_PROLOGUE();
@@ -36403,7 +36405,6 @@ loc_823203C4:
 	ctx.fpscr.disableFlushMode();
 	ctx.f1.f64 = ctx.f27.f64;
 	// bl 0x8231d3a8
-	MCLACameraBoomSmoothing(ctx.f1);
 	ctx.lr = 0x823203D8;
 	sub_8231D3A8(ctx, base);
 	// lwz r8,192(r31)
@@ -36493,6 +36494,7 @@ loc_82320454:
 	ctx.f13.f64 = double(float(ctx.f13.f64 * ctx.f30.f64));
 loc_82320468:
 	// addi r9,r1,80
+	MCLACameraPosSmoothing(ctx.f13);
 	ctx.r9.s64 = ctx.r1.s64 + 80;
 	// stfs f13,80(r1)
 	ctx.fpscr.disableFlushMode();
@@ -36579,6 +36581,7 @@ loc_823204E4:
 	ctx.f0.f64 = double(float(ctx.f0.f64 * ctx.f30.f64));
 loc_823204F4:
 	// li r9,288
+	MCLACameraLookAtSmoothing(ctx.f0);
 	ctx.r9.s64 = 288;
 	// lvx128 v47,r0,r29
 	ea = (ctx.r29.u32) & ~0xF;

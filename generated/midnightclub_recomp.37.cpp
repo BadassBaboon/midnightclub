@@ -20217,6 +20217,8 @@ loc_8256326C:
 	return;
 }
 
+extern void MCLAChassisDepthSmoothing(PPCRegister& f0);
+
 DEFINE_REX_FUNC(sub_82563298) {
 	REX_FUNC_PROLOGUE();
 	PPCRegister temp{};
@@ -20938,6 +20940,7 @@ loc_82563718:
 	ctx.f0.f64 = double(temp.f32);
 loc_82563720:
 	// lis r11,-32256
+	MCLAChassisDepthSmoothing(ctx.f0);
 	ctx.r11.s64 = -2113929216;
 	// fmuls f12,f0,f13
 	ctx.fpscr.disableFlushMode();
