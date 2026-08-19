@@ -37,11 +37,15 @@
 #include <atomic>
 
 // Substep instrumentation, defined below with the hooks.
-extern int32_t g_substep_last, g_substep_min, g_substep_max;
-extern uint64_t g_substep_sum, g_substep_n;
-extern double g_sim_time_sum;
-extern uint64_t g_sim_iters;
-extern uint64_t g_fixedstep_hits;
+// All counters below are written from hook bodies that are NOT thread-bound,
+// and sub_821BDA90 has two callers with no guarantee they share a thread.
+// Non-atomic concurrent writes would be undefined behaviour; relaxed atomics
+// cost essentially nothing at these call rates.
+extern std::atomic<int32_t> g_substep_last, g_substep_min, g_substep_max;
+extern std::atomic<uint64_t> g_substep_sum, g_substep_n;
+extern std::atomic<uint64_t> g_sim_time_us;
+extern std::atomic<uint64_t> g_sim_iters;
+extern std::atomic<uint64_t> g_fixedstep_hits;
 extern std::atomic<uint64_t> g_cacheflush_calls;
 extern std::atomic<uint64_t> g_cacheflush_bytes;
 
@@ -278,16 +282,18 @@ void RecordFrameTime() {
     // (An earlier version of this line labelled r24 > 0 as "DOUBLE". That was
     // wrong: summing all passes gives 2*dt by construction, and the value does
     // not change with frame rate. Kept as a rate-invariance check only.)
+    int32_t sub_last = g_substep_last.load(std::memory_order_relaxed);
+    int32_t sub_min  = g_substep_min.exchange(0x7FFFFFFF, std::memory_order_relaxed);
+    int32_t sub_max  = g_substep_max.exchange(-0x7FFFFFFF, std::memory_order_relaxed);
+    uint64_t sub_sum = g_substep_sum.exchange(0, std::memory_order_relaxed);
+    uint64_t sub_n   = g_substep_n.exchange(0, std::memory_order_relaxed);
     std::fprintf(log,
                  "           substep r24: last=%d min=%d max=%d avg=%.2f  (%d passes/frame)\n",
-                 g_substep_last, g_substep_min == 0x7FFFFFFF ? -999 : g_substep_min,
-                 g_substep_max == -0x7FFFFFFF ? -999 : g_substep_max,
-                 g_substep_n ? double(g_substep_sum) / g_substep_n : 0.0,
-                 g_substep_last >= 0 ? g_substep_last + 1 : -1);
-    g_substep_min = 0x7FFFFFFF;
-    g_substep_max = -0x7FFFFFFF;
-    g_substep_sum = 0;
-    g_substep_n = 0;
+                 sub_last,
+                 sub_min == 0x7FFFFFFF ? -999 : sub_min,
+                 sub_max == -0x7FFFFFFF ? -999 : sub_max,
+                 sub_n ? double(sub_sum) / sub_n : 0.0,
+                 sub_last >= 0 ? sub_last + 1 : -1);
 
     // Rate-invariance check. Sums the delta actually used across every pass, so
     // it reads ~2.00x by construction (see above). What matters is that the
@@ -295,14 +301,14 @@ void RecordFrameTime() {
     // advancement is frame-rate independent. A number that changes with the cap
     // would mean a real speed bug.
     double real_elapsed = (now - last_report_for_sim) / 1e6;
+    double sim_seconds = g_sim_time_us.exchange(0, std::memory_order_relaxed) / 1e6;
+    uint64_t sim_iters = g_sim_iters.exchange(0, std::memory_order_relaxed);
     std::fprintf(log,
                  "           SIM RATE: advanced %.3f s of game time in %.3f s real"
                  "  -> %.2fx (expect ~2.00 at EVERY cap)   (%llu passes)\n",
-                 g_sim_time_sum, real_elapsed,
-                 real_elapsed > 0.0 ? g_sim_time_sum / real_elapsed : 0.0,
-                 static_cast<unsigned long long>(g_sim_iters));
-    g_sim_time_sum = 0.0;
-    g_sim_iters = 0;
+                 sim_seconds, real_elapsed,
+                 real_elapsed > 0.0 ? sim_seconds / real_elapsed : 0.0,
+                 static_cast<unsigned long long>(sim_iters));
     last_report_for_sim = now;
 
     // Do the accumulated-time totals still advance? Our patch bypasses the
@@ -324,8 +330,8 @@ void RecordFrameTime() {
                  ((accum_a - prev_accum_a) >= -0.001f &&
                   (accum_a - prev_accum_a) < 0.001f) ? "<-- FROZEN" : "");
     std::fprintf(log, "           loc_821BDB90 fixed-step path taken %llu times\n",
-                 static_cast<unsigned long long>(g_fixedstep_hits));
-    g_fixedstep_hits = 0;
+                 static_cast<unsigned long long>(
+                     g_fixedstep_hits.exchange(0, std::memory_order_relaxed)));
 
     // How much dcbf/dcbst work the mc_FlushDataCache bypass skipped this
     // second. The console looped once per 128-byte cache line, so
@@ -451,14 +457,17 @@ void LimitFrameRate() {
 }  // namespace
 
 // Substep count observed at 0x822C2434 this second. Read-only.
-int32_t g_substep_last = -999;
-int32_t g_substep_min = 0x7FFFFFFF;
-int32_t g_substep_max = -0x7FFFFFFF;
-uint64_t g_substep_sum = 0, g_substep_n = 0;
+std::atomic<int32_t> g_substep_last{-999};
+std::atomic<int32_t> g_substep_min{0x7FFFFFFF};
+std::atomic<int32_t> g_substep_max{-0x7FFFFFFF};
+std::atomic<uint64_t> g_substep_sum{0}, g_substep_n{0};
 
 // Total simulated time advanced, summed over every substep-loop iteration.
-double g_sim_time_sum = 0.0;
-uint64_t g_sim_iters = 0;
+// Held in MICROSECONDS as an integer rather than a double: there is no
+// lock-free atomic fetch_add for floating point, and microsecond resolution is
+// far finer than this metric needs.
+std::atomic<uint64_t> g_sim_time_us{0};
+std::atomic<uint64_t> g_sim_iters{0};
 
 // These two hooks are instrumentation only. They were running unconditionally,
 // which meant a guest-memory read plus a Runtime::instance() call on every
@@ -476,8 +485,11 @@ bool TimingLogEnabled() {
 // just set by sub_821BD910.
 void MCLASubstepDelta(PPCRegister& r27) {
   if (!TimingLogEnabled()) return;
-  g_sim_time_sum += ReadGuestFloat(r27.u32 + 8);
-  g_sim_iters++;
+  float dt = ReadGuestFloat(r27.u32 + 8);
+  if (dt > 0.0f) {
+    g_sim_time_us.fetch_add(static_cast<uint64_t>(dt * 1e6), std::memory_order_relaxed);
+  }
+  g_sim_iters.fetch_add(1, std::memory_order_relaxed);
 }
 
 // PHASE 3 EXPERIMENT. The substep loop makes r24+1 passes per frame, and r24 is
@@ -509,11 +521,15 @@ void MCLASubstepCount(PPCRegister& r24) {
 
   if (!TimingLogEnabled()) return;
   int32_t v = static_cast<int32_t>(r24.s32);
-  g_substep_last = v;
-  if (v < g_substep_min) g_substep_min = v;
-  if (v > g_substep_max) g_substep_max = v;
-  g_substep_sum += static_cast<uint64_t>(v < 0 ? 0 : v);
-  g_substep_n++;
+  g_substep_last.store(v, std::memory_order_relaxed);
+  // Compare-exchange loops rather than load/compare/store: the plain version
+  // was a read-modify-write race even setting the thread question aside.
+  int32_t cur = g_substep_min.load(std::memory_order_relaxed);
+  while (v < cur && !g_substep_min.compare_exchange_weak(cur, v, std::memory_order_relaxed)) {}
+  cur = g_substep_max.load(std::memory_order_relaxed);
+  while (v > cur && !g_substep_max.compare_exchange_weak(cur, v, std::memory_order_relaxed)) {}
+  g_substep_sum.fetch_add(static_cast<uint64_t>(v < 0 ? 0 : v), std::memory_order_relaxed);
+  g_substep_n.fetch_add(1, std::memory_order_relaxed);
 }
 
 // Signatures must match what rexglue emits: only the registers named in the
@@ -549,7 +565,7 @@ void MCLAFrameDelta(PPCRegister& r8) {
 void MCLAUseRealDelta() {}
 
 // How many times the loc_821BDB90 fixed-step path was taken this second.
-uint64_t g_fixedstep_hits = 0;
+std::atomic<uint64_t> g_fixedstep_hits{0};
 
 // 0x821BDB90, immediately after `lfs f11,32(r3)` loads the FIXED timestep and
 // before `fmuls f0,f11,f13` consumes it.
@@ -564,7 +580,7 @@ uint64_t g_fixedstep_hits = 0;
 // Bypassing this block instead would have lost those accumulator updates - the
 // exact mistake that froze [r3+20] when the hook sat at 0x821BDB08.
 void MCLAFixedStepPath(PPCRegister& r3, PPCRegister& f11) {
-  g_fixedstep_hits++;
+  g_fixedstep_hits.fetch_add(1, std::memory_order_relaxed);
   f11.f64 = static_cast<double>(ReadGuestFloat(r3.u32 + 88));
 }
 
@@ -587,59 +603,57 @@ void MCLAPresentInterval(PPCRegister& r11) {
   if (force) r11.s64 = 1;
 }
 
-// BadassBaboon's Recomp Adjustments: Continuous-time exponential decay camera smoothing
+// Continuous-time exponential decay for the chase camera smoothing factors.
+//
 // In sub_82320298 (mcPlayerCamera::Update):
-// 0x82320468: f13 is camera position chase smoothing factor S1.
-// 0x823204F4: f0 is camera look-at orientation smoothing factor S2.
+//   0x82320468 - f13 is the camera position chase/lag factor S1
+//   0x823204F4 - f0  is the camera look-at / orientation factor S2
 //
-// Calibration to True 30 FPS Console Baseline:
-// On the original 30 FPS Xbox 360 console, MCLA multiplied the raw profile factor S_raw by 0.5:
-//   k30 = 0.5 * S_raw
-// In 60+ FPS recomp, the engine bypassed the 0.5 multiplier and stepped S_raw at high refresh
-// rates, making the chase camera snap to the vehicle 4x-16x faster than intended.
+// On the 30 FPS console the engine multiplied the raw profile factor by 0.5 and
+// stepped it once per update. Stepping a fixed factor at a higher rate makes the
+// camera converge proportionally faster, so the chase snaps to the car.
 //
-// The continuous-time exponential decay matching the true 30 FPS console camera lag is:
-//   S(dt) = 1.0 - (1.0 - (0.5 * S_raw))^(30.0 * dt * camera_scale)
-void MCLACameraPosSmoothing(PPCRegister& f13) {
-  float dt = ReadGuestFloat(kGuestFrameDelta);
-  double raw_k = f13.f64;
-  if (raw_k > 0.0 && raw_k < 1.0 && dt > 0.0f) {
-    static const double user_scale = [] {
-      if (const char* e = std::getenv("MCLA_CAMERA_SMOOTH_SCALE")) {
-        double v = std::atof(e);
-        if (v > 0.1 && v <= 5.0) return v;
-      }
-      return 1.0;
-    }();
-    double k30 = 0.5 * raw_k;
-    if (k30 >= 1.0) k30 = 0.999;
-    f13.f64 = 1.0 - std::pow(1.0 - k30, static_cast<double>(dt) * 30.0 * user_scale);
-  }
+//   S(dt) = 1 - (1 - 0.5 * S_raw) ^ (30 * dt * scale)
+//
+// This is rate-invariant by construction: applying it across passes whose dt
+// sums to S gives total decay (1 - k)^(30*S) regardless of how the passes are
+// divided up. That matters because these run inside the substep loop, where
+// [r3+8] is the per-pass delta rather than the whole frame delta.
+//
+// NOTE the absolute calibration (the 30.0) is empirical, tuned against how the
+// 30 FPS build feels, not derived from a known pass count. Rate-invariance is
+// guaranteed; matching the console curve exactly is not. MCLA_CAMERA_SMOOTH_SCALE
+// exists to nudge it.
+double CameraSmoothScale() {
+  static const double s = [] {
+    if (const char* e = std::getenv("MCLA_CAMERA_SMOOTH_SCALE")) {
+      double v = std::atof(e);
+      if (v > 0.1 && v <= 5.0) return v;
+    }
+    return 1.0;
+  }();
+  return s;
 }
 
-void MCLACameraLookAtSmoothing(PPCRegister& f0) {
-  float dt = ReadGuestFloat(kGuestFrameDelta);
-  double raw_k = f0.f64;
-  if (raw_k > 0.0 && raw_k < 1.0 && dt > 0.0f) {
-    static const double user_scale = [] {
-      if (const char* e = std::getenv("MCLA_CAMERA_SMOOTH_SCALE")) {
-        double v = std::atof(e);
-        if (v > 0.1 && v <= 5.0) return v;
-      }
-      return 1.0;
-    }();
-    double k30 = 0.5 * raw_k;
-    if (k30 >= 1.0) k30 = 0.999;
-    f0.f64 = 1.0 - std::pow(1.0 - k30, static_cast<double>(dt) * 30.0 * user_scale);
-  }
+// Shared by both camera hooks - they were byte-identical copies.
+void ApplyCameraSmoothing(PPCRegister& reg) {
+  const float dt = ReadGuestFloat(kGuestFrameDelta);
+  const double raw_k = reg.f64;
+  // Only transform genuine smoothing factors. A value of exactly 0 or >= 1
+  // means "no smoothing" or "snap immediately", both of which are already
+  // rate-independent and must pass through untouched.
+  if (raw_k <= 0.0 || raw_k >= 1.0 || dt <= 0.0f) return;
+
+  // raw_k < 1.0 so k30 < 0.5 always; no clamp needed. (An earlier version had
+  // an `if (k30 >= 1.0) k30 = 0.999;` guard here that was unreachable.)
+  const double k30 = 0.5 * raw_k;
+  reg.f64 = 1.0 - std::pow(1.0 - k30, static_cast<double>(dt) * 30.0 * CameraSmoothScale());
 }
 
-// BadassBaboon's Recomp Adjustments: Vehicle chassis suspension damping & ground depth filter continuous-time scaling
-// In sub_82563298:
-// 0x82563720: f0 is the chassis ground depth filter coefficient alpha (0.10 at 30 FPS, 0.05 at 60 FPS).
-// At >60 FPS (120/144/240 FPS), the stock 60 FPS constant 0.05 steps at GPU refresh rate, causing
-// over-damped or hyper-reactive suspension bounce. Continuous-time exponential decay:
-//   alpha(dt) = 1.0 - (1.0 - 0.10)^(30.0 * dt) = 1.0 - 0.90^(30.0 * dt)
+void MCLACameraPosSmoothing(PPCRegister& f13) { ApplyCameraSmoothing(f13); }
+
+void MCLACameraLookAtSmoothing(PPCRegister& f0) { ApplyCameraSmoothing(f0); }
+
 void MCLAChassisDepthSmoothing(PPCRegister& f0) {
   float dt = ReadGuestFloat(kGuestFrameDelta);
   if (dt > 0.0f) {
