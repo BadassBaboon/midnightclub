@@ -32,6 +32,7 @@
 #include <cstdlib>
 #include <ctime>
 #include <string>
+#include <atomic>
 
 // Substep instrumentation, defined below with the hooks.
 extern int32_t g_substep_last, g_substep_min, g_substep_max;
@@ -39,6 +40,8 @@ extern uint64_t g_substep_sum, g_substep_n;
 extern double g_sim_time_sum;
 extern uint64_t g_sim_iters;
 extern uint64_t g_fixedstep_hits;
+extern std::atomic<uint64_t> g_cacheflush_calls;
+extern std::atomic<uint64_t> g_cacheflush_bytes;
 
 namespace {
 
@@ -281,10 +284,27 @@ void RecordFrameTime() {
                  "  timescale=%.3f  %s\n",
                  accum_a, accum_a - prev_accum_a, accum_b, accum_b - prev_accum_b,
                  ReadGuestFloat(kGuestTimeScale),
-                 (accum_a - prev_accum_a) < 0.001f ? "<-- FROZEN" : "");
+                 // A NEGATIVE delta means the engine reset the accumulator (level or race
+                 // transition), not that it stopped advancing. Only flag a genuine
+                 // stall: delta at or near zero while the value stays put. The old
+                 // `< 0.001f` test reported two false FROZEN hits per session on
+                 // resets of ~-98/s.
+                 ((accum_a - prev_accum_a) >= -0.001f &&
+                  (accum_a - prev_accum_a) < 0.001f) ? "<-- FROZEN" : "");
     std::fprintf(log, "           loc_821BDB90 fixed-step path taken %llu times\n",
                  static_cast<unsigned long long>(g_fixedstep_hits));
     g_fixedstep_hits = 0;
+
+    // How much dcbf/dcbst work the mc_FlushDataCache bypass skipped this
+    // second. The console looped once per 128-byte cache line, so
+    // bytes/128 approximates the emulated loop iterations avoided.
+    uint64_t cf_calls = g_cacheflush_calls.exchange(0, std::memory_order_relaxed);
+    uint64_t cf_bytes = g_cacheflush_bytes.exchange(0, std::memory_order_relaxed);
+    std::fprintf(log,
+                 "           cache-flush bypass: %llu calls, %.2f MB (~%llu skipped 128B line ops)\n",
+                 static_cast<unsigned long long>(cf_calls),
+                 cf_bytes / (1024.0 * 1024.0),
+                 static_cast<unsigned long long>(cf_bytes / 128));
     prev_accum_a = accum_a;
     prev_accum_b = accum_b;
     frames = 0;
@@ -446,7 +466,10 @@ void MCLASubstepCount(PPCRegister& r24) {
   static const int32_t override_count = [] {
     if (const char* e = std::getenv("MCLA_SUBSTEPS")) {
       int v = std::atoi(e);
-      if (v >= 0 && v <= 8) return v;
+      // Lower bound is 1, NOT 0. MCLA_SUBSTEPS=0 was measured to leave the
+      // player car with no wheels and undriveable - the substep passes are
+      // where vehicle setup happens. Never let that value reach the guest.
+      if (v >= 1 && v <= 8) return v;
     }
     return -1;  // no override
   }();
@@ -598,20 +621,31 @@ void MCLAChassisDepthSmoothing(PPCRegister& f0) {
 //   flt_827E0E50 (active LOD) = flt_827E0DE0 (base 300.0m) * flt_827E0DEC (speed multiplier).
 // Scaling base LOD reduces dense Downtown draw calls and vertex queue spikes by ~30%.
 void UpdateCityLODMemory() {
-  static bool applied = false;
-  if (applied) return;
+  // Previously guarded by a one-shot `static bool applied`. That is wrong: the
+  // city streamer re-initialises the base LOD global on district/level load, so
+  // after the first transition our value was silently gone for the rest of the
+  // session with no way to notice.
+  //
+  // Verify each frame and rewrite only when the engine has changed it. One
+  // guest float read per frame is negligible next to the draw-call saving, and
+  // it survives every level transition.
   uint8_t* base = rex::Runtime::instance()->virtual_membase();
   if (!base) return;
 
-  float scale = 0.75f;
-  if (const char* e = std::getenv("MCLA_LOD_CITY_SCALE")) {
-    float v = static_cast<float>(std::atof(e));
-    if (v >= 0.1f && v <= 10.0f) scale = v;
+  static const float final_lod = [] {
+    float scale = 0.75f;
+    if (const char* e = std::getenv("MCLA_LOD_CITY_SCALE")) {
+      float v = static_cast<float>(std::atof(e));
+      if (v >= 0.1f && v <= 10.0f) scale = v;
+    }
+    return scale * 300.0f;
+  }();
+
+  if (ReadGuestFloat(rage::kBaseLodDistanceAddr) != final_lod) {
+    WriteGuestFloat(rage::kBaseLodDistanceAddr, final_lod);
   }
-  float final_lod = scale * 300.0f;
-  WriteGuestFloat(rage::kBaseLodDistanceAddr, final_lod);
-  applied = true;
 }
+
 
 void Patch_ScaleCityLOD(PPCRegister& f13) {
   static const double scale = [] {
@@ -753,3 +787,60 @@ void Patch_DofComposite(PPCRegister& r3) {
 }
 
 
+
+// ===========================================================================
+// Restored 2026-08-19. These were removed in 9512dc0 ("Fixed up accidental
+// bugs and cleaned up code") but the workplan continued to document them as
+// done. Restored deliberately, with the reasoning recorded here.
+// ===========================================================================
+
+// Skip the intro legal movies.
+//
+// The intro BIK/SWF plays too fast at unlocked frame rates. That is inherent to
+// the 60 FPS unlock - LARecomp exhibits the same behaviour with the same
+// unlocking method - so it is NOT treated as a bug to chase. This is the
+// supported workaround. Off by default; the intro plays unless asked otherwise.
+//
+// 0x822C2F08, jump_address_on_true = 0x822C2F7C.
+bool SkipIntro() {
+  static const bool skip = [] {
+    const char* e = std::getenv("MCLA_SKIP_INTRO");
+    return e && std::string(e) == "1";
+  }();
+  return skip;
+}
+
+// 0x821315E4 in sub_82131508.
+//
+// Skipping the intro leaves bit 24 of the render pass mask set, and the engine
+// then submits an uninitialised extra pass that corrupts Downtown shaders.
+// Clearing bit 24 prevents that. Only applied when the intro is actually being
+// skipped - masking unconditionally would change rendering in the normal path.
+void MCLA_SkipIntroRenderPassMask(PPCRegister& r4) {
+  if (SkipIntro()) {
+    r4.u32 = 0xFEFFFFFFu;
+  }
+}
+
+// 0x821D5510 - the Xbox 360 hardware cache flush loop (dcbf/dcbst).
+//
+// On PowerPC this walks a buffer 128 bytes at a time flushing cache lines for
+// DMA coherency. On x86_64 host memory is already coherent, so the loop has no
+// semantic effect and only costs time - which is why this can be replaced
+// outright rather than switched at runtime: there is no behaviour to preserve.
+//
+// Whether it is WORTH replacing is a separate question, so count the calls and
+// the bytes we skip. MCLA_TIMING_LOG=1 reports both once per second. Called
+// from streaming threads as well as the main thread, hence atomics.
+std::atomic<uint64_t> g_cacheflush_calls{0};
+std::atomic<uint64_t> g_cacheflush_bytes{0};
+
+#if defined(_WIN32) && !defined(REXGLUE_HAS_XEO3_TARGET)
+uint32_t FlushDataCache_hook(uint32_t addr, uint32_t size, uint32_t flag) {
+  (void)flag;
+  g_cacheflush_calls.fetch_add(1, std::memory_order_relaxed);
+  g_cacheflush_bytes.fetch_add(size, std::memory_order_relaxed);
+  return addr;
+}
+REX_HOOK(mc_FlushDataCache, FlushDataCache_hook);
+#endif
